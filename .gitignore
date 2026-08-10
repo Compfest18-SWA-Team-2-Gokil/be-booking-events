@@ -1,0 +1,27 @@
+# Binary
+/bin/
+*.exe
+*.out
+
+# Environment variables (jangan pernah commit ini)
+.env
+.env.*
+!.env.example
+
+# Go build cache
+*.test
+*.prof
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.out
+coverage.html
