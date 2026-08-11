@@ -8,26 +8,40 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
+	authapp "github.com/ebk-tech/be-booking-events/internal/auth/application"
+	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
+	authinfra "github.com/ebk-tech/be-booking-events/internal/auth/infrastructure"
+	checkinapp "github.com/ebk-tech/be-booking-events/internal/checkin/application"
+	checkindelivery "github.com/ebk-tech/be-booking-events/internal/checkin/delivery"
+	checkininfra "github.com/ebk-tech/be-booking-events/internal/checkin/infrastructure"
+	dashboardapp "github.com/ebk-tech/be-booking-events/internal/dashboard/application"
+	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
+	dashboardinfra "github.com/ebk-tech/be-booking-events/internal/dashboard/infrastructure"
+	eventsapp "github.com/ebk-tech/be-booking-events/internal/events/application"
+	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
+	eventsinfra "github.com/ebk-tech/be-booking-events/internal/events/infrastructure"
+	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
+	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
+	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
+	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
+	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
+	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
+	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	_ "github.com/ebk-tech/be-booking-events/docs"
-	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		slog.Error("DATABASE_URL is required")
-		os.Exit(1)
-	}
+	dbURL := mustEnv("DATABASE_URL")
+	jwtSecret := mustEnv("JWT_SECRET_KEY")
+	qrSecret := mustEnv("QR_SECRET_KEY")
+	queueSecret := mustEnv("QUEUE_SECRET_KEY")
+	redisURL := mustEnv("REDIS_URL")
 
+	// --- Postgres ---
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		slog.Error("failed to connect to database", "err", err)
@@ -40,26 +54,88 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Dependency injection: domain tidak tahu siapa yang inject, Infrastructure tidak tahu siapa yang pakai.
-	ticketRepo := infrastructure.NewPostgresTicketRepository(pool)
-	holdUC := application.NewHoldTicketUseCase(ticketRepo)
-	expireUC := application.NewExpireHeldTicketsUseCase(ticketRepo)
+	// --- Redis ---
+	redisOpts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		slog.Error("invalid REDIS_URL", "err", err)
+		os.Exit(1)
+	}
+	redisClient := redis.NewClient(redisOpts)
+	defer redisClient.Close()
 
-	worker := infrastructure.NewCronExpiryWorker(expireUC)
-	go worker.Start(ctx)
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		slog.Error("redis ping failed", "err", err)
+		os.Exit(1)
+	}
 
+	// --- Auth module ---
+	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
+	passwordHasher := authinfra.NewBcryptPasswordHasher()
+	userRepo := authinfra.NewPostgresUserRepository(pool)
+	registerUC := authapp.NewRegisterUseCase(userRepo, passwordHasher)
+	loginUC := authapp.NewLoginUseCase(userRepo, passwordHasher, tokenProvider)
+	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo)
+	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, userRepo)
+
+	// --- Inventory module ---
+	ticketRepo := inventoryinfra.NewPostgresTicketRepository(pool)
+	holdUC := inventoryapp.NewHoldTicketUseCase(ticketRepo)
+	expireUC := inventoryapp.NewExpireHeldTicketsUseCase(ticketRepo)
+	inventoryWorker := inventoryinfra.NewCronExpiryWorker(expireUC)
+	go inventoryWorker.Start(ctx)
+	inventoryHandler := inventorydelivery.NewInventoryHandler(holdUC)
+
+	// --- Dashboard module ---
+	metricsRepo := dashboardinfra.NewPostgresMetricsRepository(pool)
+	metricsUC := dashboardapp.NewGetEventMetricsUseCase(metricsRepo)
+	dashboardHandler := dashboarddelivery.NewDashboardHandler(metricsUC)
+
+	// --- Check-in module ---
+	qrSigner := checkininfra.NewHMACQRSigner(qrSecret)
+	checkinRepo := checkininfra.NewPostgresCheckinRepository(pool)
+	issueUC := checkinapp.NewIssueTicketUseCase(checkinRepo, qrSigner)
+	scanUC := checkinapp.NewScanTicketUseCase(checkinRepo, qrSigner)
+	checkinHandler := checkindelivery.NewCheckinHandler(issueUC, scanUC)
+
+	// --- Queue module ---
+	queueRepo := queueinfra.NewRedisQueueRepository(redisClient)
+	tokenSigner := queueinfra.NewHMACTokenSigner(queueSecret)
+	joinUC := queueapp.NewJoinQueueUseCase(queueRepo)
+	releaseUC := queueapp.NewReleaseQueueUseCase(queueRepo, tokenSigner, 10)
+	validateTokenUC := queueapp.NewValidateQueueTokenUseCase(tokenSigner)
+	queueWorker := queueinfra.NewCronReleaseWorker(releaseUC)
+	go queueWorker.Start(ctx)
+	queueHandler := queuedelivery.NewQueueHandler(joinUC, validateTokenUC, queueRepo)
+
+	// --- Events module ---
+	eventRepo := eventsinfra.NewPostgresEventRepository(pool)
+	createEventUC := eventsapp.NewCreateEventUseCase(eventRepo)
+	listEventsUC := eventsapp.NewListEventsUseCase(eventRepo)
+	createTicketTypeUC := eventsapp.NewCreateTicketTypeUseCase(eventRepo)
+	listTicketTypesUC := eventsapp.NewListTicketTypesUseCase(eventRepo)
+	provisionUnitsUC := eventsapp.NewProvisionUnitsUseCase(eventRepo)
+	eventsHandler := eventsdelivery.NewEventsHandler(
+		createEventUC, listEventsUC, createTicketTypeUC, listTicketTypesUC, provisionUnitsUC,
+	)
+
+	// --- Router ---
 	r := chi.NewRouter()
 
-	r.Get("/docs/*", httpSwagger.Handler(
-		httpSwagger.URL("/docs/doc.json"), //The url pointing to API definition
-	))
+	routes.Register(r, routes.Deps{
+		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider),
+		RequireBuyer:        authdelivery.RequireRole("BUYER"),
+		RequireOrganizer:    authdelivery.RequireRole("ORGANIZER"),
+		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
 
-	r.Get("/", RootHandler)
-	r.Get("/check-health", HealthCheckHandler(pool))
+		Auth:      authHandler,
+		Inventory: inventoryHandler,
+		Dashboard: dashboardHandler,
+		Checkin:   checkinHandler,
+		Queue:     queueHandler,
+		Events:    eventsHandler,
+	})
 
-	h := delivery.NewInventoryHandler(holdUC)
-	r.Post("/api/v1/tickets/hold", h.HoldTicket)
-
+	// --- HTTP server ---
 	srv := &http.Server{
 		Addr:    ":8080",
 		Handler: r,
@@ -74,4 +150,13 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "err", err)
 	}
+}
+
+func mustEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		slog.Error("env var wajib tidak ditemukan", "key", key)
+		os.Exit(1)
+	}
+	return v
 }

@@ -1,0 +1,774 @@
+openapi: 3.0.3
+info:
+  title: BE Booking Events API
+  description: Backend API for event ticketing system with anti-oversell engine, check-in, and waiting room queue.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Auth
+  - name: Events
+  - name: Inventory
+  - name: Dashboard
+  - name: Check-in
+  - name: Queue
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      example:
+        error: "pesan error"
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [BUYER, ORGANIZER, GATE_OPERATOR, ADMIN]
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizer_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        date:
+          type: string
+          format: date-time
+        location:
+          type: string
+
+    TicketType:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        price:
+          type: integer
+          description: Harga dalam rupiah
+        kind:
+          type: string
+          enum: [GA, SEATED]
+        total_quota:
+          type: integer
+
+    TicketTypeMetrics:
+      type: object
+      properties:
+        ticket_type_id:
+          type: string
+          format: uuid
+        available:
+          type: integer
+        held:
+          type: integer
+        sold:
+          type: integer
+        admitted:
+          type: integer
+        refunded:
+          type: integer
+        total:
+          type: integer
+
+paths:
+  # ── AUTH ─────────────────────────────────────────────────────────────────
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register pengguna baru
+      description: Default role adalah BUYER. Role lain diatur via DB/admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                password:
+                  type: string
+                  minLength: 8
+            example:
+              email: "buyer@example.com"
+              name: "Budi Santoso"
+              password: "password123"
+      responses:
+        "201":
+          description: Berhasil register
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validasi gagal atau email sudah terdaftar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login dan dapatkan JWT token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+            example:
+              email: "buyer@example.com"
+              password: "password123"
+      responses:
+        "200":
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: JWT token (valid 24 jam)
+                  user:
+                    $ref: "#/components/schemas/User"
+        "401":
+          description: Kredensial tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Info user yang sedang login
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Data user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/events/{eventID}/gate-operators:
+    post:
+      tags: [Auth]
+      summary: Assign gate operator ke event
+      description: Hanya ORGANIZER. User yang di-assign harus punya role GATE_OPERATOR.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Berhasil di-assign
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: assigned
+        "400":
+          description: User bukan GATE_OPERATOR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan ORGANIZER
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── EVENTS ───────────────────────────────────────────────────────────────
+  /api/v1/events:
+    post:
+      tags: [Events]
+      summary: Buat event baru
+      description: Hanya ORGANIZER. OrganizerID otomatis dari JWT.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, date, location]
+              properties:
+                name:
+                  type: string
+                date:
+                  type: string
+                  format: date-time
+                  description: RFC3339, harus di masa depan
+                location:
+                  type: string
+            example:
+              name: "Konser Jakarta 2027"
+              date: "2027-06-15T19:00:00+07:00"
+              location: "GBK Jakarta"
+      responses:
+        "201":
+          description: Event berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "400":
+          description: Validasi gagal (nama kosong, tanggal di masa lalu, dll)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan ORGANIZER
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags: [Events]
+      summary: Daftar semua event
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar event diurutkan berdasarkan tanggal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Event"
+
+  /api/v1/events/{eventID}/ticket-types:
+    post:
+      tags: [Events]
+      summary: Buat tipe tiket untuk event
+      description: Hanya ORGANIZER.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price, kind, total_quota]
+              properties:
+                name:
+                  type: string
+                price:
+                  type: integer
+                  description: Harga dalam rupiah
+                kind:
+                  type: string
+                  enum: [GA, SEATED]
+                total_quota:
+                  type: integer
+                  minimum: 1
+            example:
+              name: "Festival GA"
+              price: 150000
+              kind: "GA"
+              total_quota: 5000
+      responses:
+        "201":
+          description: Tipe tiket berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketType"
+        "404":
+          description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags: [Events]
+      summary: Daftar tipe tiket dalam event
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      responses:
+        "200":
+          description: Daftar tipe tiket
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket_types:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TicketType"
+
+  /api/v1/events/{eventID}/ticket-types/{ticketTypeID}/provision:
+    post:
+      tags: [Events]
+      summary: Provision tiket units
+      description: |
+        Membuat N baris ticket_unit (seat fisik) untuk satu ticket_type.
+        Total provisioned tidak boleh melebihi total_quota.
+        Hanya ORGANIZER.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - $ref: "#/components/parameters/ticketTypeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quantity]
+              properties:
+                quantity:
+                  type: integer
+                  minimum: 1
+            example:
+              quantity: 1000
+      responses:
+        "201":
+          description: Units berhasil di-provision
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket_type_id:
+                    type: string
+                    format: uuid
+                  provisioned:
+                    type: integer
+                  total:
+                    type: integer
+                  provisioned_at:
+                    type: string
+                    format: date-time
+        "400":
+          description: Kuota habis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Ticket type tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── INVENTORY ─────────────────────────────────────────────────────────────
+  /api/v1/tickets/hold:
+    post:
+      tags: [Inventory]
+      summary: Hold tiket (anti-oversell)
+      description: |
+        Hold satu atau beberapa tiket selama 5 menit.
+        Menggunakan SELECT FOR UPDATE dengan sort TicketTypeID ASC untuk mencegah deadlock.
+        Hanya BUYER.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [ticket_type_id, quantity]
+                    properties:
+                      ticket_type_id:
+                        type: string
+                        format: uuid
+                      quantity:
+                        type: integer
+                        minimum: 1
+            example:
+              items:
+                - ticket_type_id: "uuid-tiket-type"
+                  quantity: 2
+      responses:
+        "200":
+          description: Tiket berhasil di-hold
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  held_until:
+                    type: string
+                    format: date-time
+                    description: Hold kadaluarsa setelah 5 menit
+                  unit_ids:
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+        "409":
+          description: Tiket tidak tersedia (stok habis)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── DASHBOARD ─────────────────────────────────────────────────────────────
+  /api/v1/events/{eventID}/metrics:
+    get:
+      tags: [Dashboard]
+      summary: Metrics tiket per event
+      description: |
+        Menampilkan jumlah tiket per status (AVAILABLE, HELD, CONFIRMED, ADMITTED, REFUNDED)
+        per tipe tiket. Hanya ORGANIZER.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      responses:
+        "200":
+          description: Metrics berhasil diambil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event_id:
+                    type: string
+                    format: uuid
+                  metrics:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TicketTypeMetrics"
+        "403":
+          description: Bukan ORGANIZER
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── CHECK-IN ──────────────────────────────────────────────────────────────
+  /api/v1/checkin/issue:
+    post:
+      tags: [Check-in]
+      summary: Issue QR code untuk tiket
+      description: |
+        Generate QR code dari tiket yang sudah CONFIRMED.
+        Format: `base64url(json_payload).hex(HMAC-SHA256)`.
+        Hanya ORGANIZER.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket_unit_id, order_id, event_id]
+              properties:
+                ticket_unit_id:
+                  type: string
+                  format: uuid
+                order_id:
+                  type: string
+                event_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: QR code berhasil dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qr_content:
+                    type: string
+                    description: String QR yang siap di-encode ke QR image
+        "404":
+          description: Tiket tidak ditemukan atau belum CONFIRMED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/checkin/scan:
+    post:
+      tags: [Check-in]
+      summary: Scan QR code di pintu masuk
+      description: |
+        Verifikasi HMAC signature, cek assignment gate operator ke event,
+        lalu atomic admit (UPDATE WHERE status='CONFIRMED').
+        Hanya GATE_OPERATOR. Gate operator ID diambil dari JWT.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_content]
+              properties:
+                qr_content:
+                  type: string
+                  description: String dari QR code yang di-scan
+      responses:
+        "200":
+          description: Tiket berhasil di-admit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket_unit_id:
+                    type: string
+                    format: uuid
+                  event_id:
+                    type: string
+                    format: uuid
+        "401":
+          description: Signature QR tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Gate operator tidak di-assign ke event ini
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Tiket sudah pernah di-admit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── QUEUE ─────────────────────────────────────────────────────────────────
+  /api/v1/events/{eventID}/queue/join:
+    post:
+      tags: [Queue]
+      summary: Masuk ke waiting room
+      description: |
+        Jika traffic di bawah 100 req/detik: langsung dapat akses (`status: direct`).
+        Jika melebihi threshold: user masuk antrean Redis Sorted Set.
+        Hanya BUYER.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Akses langsung (traffic rendah)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: direct
+        "202":
+          description: Masuk antrean (traffic tinggi)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: waiting
+                  position:
+                    type: integer
+                    description: Posisi dalam antrean (1-based)
+
+  /api/v1/events/{eventID}/queue/status:
+    get:
+      tags: [Queue]
+      summary: Cek status antrean
+      description: |
+        Polling endpoint. Jika giliran sudah tiba, response berisi `queue_token`
+        yang valid selama 10 menit untuk proses checkout.
+        Hanya BUYER.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Status antrean
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [waiting, ready]
+                  position:
+                    type: integer
+                    description: Posisi saat masih waiting
+                  queue_token:
+                    type: string
+                    description: Token saat status ready (valid 10 menit)
+        "404":
+          description: User tidak dalam antrean
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/queue/token/validate:
+    post:
+      tags: [Queue]
+      summary: Validasi queue token sebelum checkout
+      description: |
+        Dipanggil oleh modul checkout. Token dikirim via header `X-Queue-Token`.
+        Verifikasi HMAC signature dan TTL (10 menit).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: X-Queue-Token
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Token valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+                  event_id:
+                    type: string
+                    format: uuid
+        "401":
+          description: Token tidak valid atau kadaluarsa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+# ── Reusable Parameters ───────────────────────────────────────────────────
+components:
+  parameters:
+    eventID:
+      name: eventID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ticketTypeID:
+      name: ticketTypeID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
