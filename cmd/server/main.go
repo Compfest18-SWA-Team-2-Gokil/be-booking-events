@@ -17,12 +17,16 @@ import (
 	dashboardapp "github.com/ebk-tech/be-booking-events/internal/dashboard/application"
 	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
 	dashboardinfra "github.com/ebk-tech/be-booking-events/internal/dashboard/infrastructure"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
+	eventsapp "github.com/ebk-tech/be-booking-events/internal/events/application"
+	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
+	eventsinfra "github.com/ebk-tech/be-booking-events/internal/events/infrastructure"
+	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
+	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
+	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
 	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
+	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -73,17 +77,14 @@ func main() {
 	loginUC := authapp.NewLoginUseCase(userRepo, passwordHasher, tokenProvider)
 	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo)
 	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, userRepo)
-	authMiddleware := authdelivery.AuthMiddleware(tokenProvider)
-	requireBuyer := authdelivery.RequireRole("BUYER")
-	requireOrganizer := authdelivery.RequireRole("ORGANIZER")
-	requireGateOperator := authdelivery.RequireRole("GATE_OPERATOR")
 
 	// --- Inventory module ---
-	ticketRepo := infrastructure.NewPostgresTicketRepository(pool)
-	holdUC := application.NewHoldTicketUseCase(ticketRepo)
-	expireUC := application.NewExpireHeldTicketsUseCase(ticketRepo)
-	inventoryWorker := infrastructure.NewCronExpiryWorker(expireUC)
+	ticketRepo := inventoryinfra.NewPostgresTicketRepository(pool)
+	holdUC := inventoryapp.NewHoldTicketUseCase(ticketRepo)
+	expireUC := inventoryapp.NewExpireHeldTicketsUseCase(ticketRepo)
+	inventoryWorker := inventoryinfra.NewCronExpiryWorker(expireUC)
 	go inventoryWorker.Start(ctx)
+	inventoryHandler := inventorydelivery.NewInventoryHandler(holdUC)
 
 	// --- Dashboard module ---
 	metricsRepo := dashboardinfra.NewPostgresMetricsRepository(pool)
@@ -107,39 +108,32 @@ func main() {
 	go queueWorker.Start(ctx)
 	queueHandler := queuedelivery.NewQueueHandler(joinUC, validateTokenUC, queueRepo)
 
+	// --- Events module ---
+	eventRepo := eventsinfra.NewPostgresEventRepository(pool)
+	createEventUC := eventsapp.NewCreateEventUseCase(eventRepo)
+	listEventsUC := eventsapp.NewListEventsUseCase(eventRepo)
+	createTicketTypeUC := eventsapp.NewCreateTicketTypeUseCase(eventRepo)
+	listTicketTypesUC := eventsapp.NewListTicketTypesUseCase(eventRepo)
+	provisionUnitsUC := eventsapp.NewProvisionUnitsUseCase(eventRepo)
+	eventsHandler := eventsdelivery.NewEventsHandler(
+		createEventUC, listEventsUC, createTicketTypeUC, listTicketTypesUC, provisionUnitsUC,
+	)
+
 	// --- Router ---
 	r := chi.NewRouter()
 
-	// Public: Auth
-	r.Post("/api/v1/auth/register", authHandler.Register)
-	r.Post("/api/v1/auth/login", authHandler.Login)
+	routes.Register(r, routes.Deps{
+		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider),
+		RequireBuyer:        authdelivery.RequireRole("BUYER"),
+		RequireOrganizer:    authdelivery.RequireRole("ORGANIZER"),
+		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
 
-	// Authenticated routes
-	r.Group(func(r chi.Router) {
-		r.Use(authMiddleware)
-
-		// Auth
-		r.Get("/api/v1/auth/me", authHandler.Me)
-
-		// Inventory — BUYER only
-		r.With(requireBuyer).Post("/api/v1/tickets/hold", delivery.NewInventoryHandler(holdUC).HoldTicket)
-
-		// Dashboard — ORGANIZER only
-		r.With(requireOrganizer).Get("/api/v1/events/{eventID}/metrics", dashboardHandler.GetEventMetrics)
-
-		// Gate operator assignment — ORGANIZER only
-		r.With(requireOrganizer).Post("/api/v1/events/{eventID}/gate-operators", authHandler.AssignGateOperator)
-
-		// Check-in — issue: ORGANIZER, scan: GATE_OPERATOR
-		r.With(requireOrganizer).Post("/api/v1/checkin/issue", checkinHandler.IssueTicket)
-		r.With(requireGateOperator).Post("/api/v1/checkin/scan", checkinHandler.ScanTicket)
-
-		// Queue — BUYER only
-		r.With(requireBuyer).Post("/api/v1/events/{eventID}/queue/join", queueHandler.JoinQueue)
-		r.With(requireBuyer).Get("/api/v1/events/{eventID}/queue/status", queueHandler.GetQueueStatus)
-
-		// Queue token validate — any authenticated
-		r.Post("/api/v1/queue/token/validate", queueHandler.ValidateToken)
+		Auth:      authHandler,
+		Inventory: inventoryHandler,
+		Dashboard: dashboardHandler,
+		Checkin:   checkinHandler,
+		Queue:     queueHandler,
+		Events:    eventsHandler,
 	})
 
 	// --- HTTP server ---
