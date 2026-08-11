@@ -8,23 +8,33 @@ import (
 	"os/signal"
 	"syscall"
 
+	checkinapp "github.com/ebk-tech/be-booking-events/internal/checkin/application"
+	checkindelivery "github.com/ebk-tech/be-booking-events/internal/checkin/delivery"
+	checkininfra "github.com/ebk-tech/be-booking-events/internal/checkin/infrastructure"
+	dashboardapp "github.com/ebk-tech/be-booking-events/internal/dashboard/application"
+	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
+	dashboardinfra "github.com/ebk-tech/be-booking-events/internal/dashboard/infrastructure"
 	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
 	"github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
 	"github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
+	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
+	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
+	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		slog.Error("DATABASE_URL is required")
-		os.Exit(1)
-	}
+	dbURL := mustEnv("DATABASE_URL")
+	qrSecret := mustEnv("QR_SECRET_KEY")
+	queueSecret := mustEnv("QUEUE_SECRET_KEY")
+	redisURL := mustEnv("REDIS_URL")
 
+	// --- Postgres ---
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		slog.Error("failed to connect to database", "err", err)
@@ -37,18 +47,69 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Dependency injection: domain tidak tahu siapa yang inject, Infrastructure tidak tahu siapa yang pakai.
+	// --- Redis ---
+	redisOpts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		slog.Error("invalid REDIS_URL", "err", err)
+		os.Exit(1)
+	}
+	redisClient := redis.NewClient(redisOpts)
+	defer redisClient.Close()
+
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		slog.Error("redis ping failed", "err", err)
+		os.Exit(1)
+	}
+
+	// --- Inventory module ---
 	ticketRepo := infrastructure.NewPostgresTicketRepository(pool)
 	holdUC := application.NewHoldTicketUseCase(ticketRepo)
 	expireUC := application.NewExpireHeldTicketsUseCase(ticketRepo)
+	inventoryWorker := infrastructure.NewCronExpiryWorker(expireUC)
+	go inventoryWorker.Start(ctx)
 
-	worker := infrastructure.NewCronExpiryWorker(expireUC)
-	go worker.Start(ctx)
+	// --- Dashboard module ---
+	metricsRepo := dashboardinfra.NewPostgresMetricsRepository(pool)
+	metricsUC := dashboardapp.NewGetEventMetricsUseCase(metricsRepo)
+	dashboardHandler := dashboarddelivery.NewDashboardHandler(metricsUC)
 
+	// --- Check-in module ---
+	qrSigner := checkininfra.NewHMACQRSigner(qrSecret)
+	checkinRepo := checkininfra.NewPostgresCheckinRepository(pool)
+	issueUC := checkinapp.NewIssueTicketUseCase(checkinRepo, qrSigner)
+	scanUC := checkinapp.NewScanTicketUseCase(checkinRepo, qrSigner)
+	checkinHandler := checkindelivery.NewCheckinHandler(issueUC, scanUC)
+
+	// --- Queue module ---
+	queueRepo := queueinfra.NewRedisQueueRepository(redisClient)
+	tokenSigner := queueinfra.NewHMACTokenSigner(queueSecret)
+	joinUC := queueapp.NewJoinQueueUseCase(queueRepo)
+	releaseUC := queueapp.NewReleaseQueueUseCase(queueRepo, tokenSigner, 10)
+	validateTokenUC := queueapp.NewValidateQueueTokenUseCase(tokenSigner)
+	queueWorker := queueinfra.NewCronReleaseWorker(releaseUC)
+	go queueWorker.Start(ctx)
+	queueHandler := queuedelivery.NewQueueHandler(joinUC, validateTokenUC, queueRepo)
+
+	// --- Router ---
 	r := chi.NewRouter()
-	h := delivery.NewInventoryHandler(holdUC)
-	r.Post("/api/v1/tickets/hold", h.HoldTicket)
 
+	// Inventory
+	inventoryHandler := delivery.NewInventoryHandler(holdUC)
+	r.Post("/api/v1/tickets/hold", inventoryHandler.HoldTicket)
+
+	// Dashboard
+	r.Get("/api/v1/events/{eventID}/metrics", dashboardHandler.GetEventMetrics)
+
+	// Check-in
+	r.Post("/api/v1/checkin/issue", checkinHandler.IssueTicket)
+	r.Post("/api/v1/checkin/scan", checkinHandler.ScanTicket)
+
+	// Queue
+	r.Post("/api/v1/events/{eventID}/queue/join", queueHandler.JoinQueue)
+	r.Get("/api/v1/events/{eventID}/queue/status", queueHandler.GetQueueStatus)
+	r.Post("/api/v1/queue/token/validate", queueHandler.ValidateToken)
+
+	// --- HTTP server ---
 	srv := &http.Server{
 		Addr:    ":8080",
 		Handler: r,
@@ -63,4 +124,13 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "err", err)
 	}
+}
+
+func mustEnv(key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		slog.Error("env var wajib tidak ditemukan", "key", key)
+		os.Exit(1)
+	}
+	return v
 }

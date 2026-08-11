@@ -2,6 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Modules
+
+| Modul | PRD | Path | Dependency baru |
+|---|---|---|---|
+| Inventory | PRD-01 | `internal/inventory/` | — |
+| Dashboard | PRD-07 | `internal/dashboard/` | — |
+| Check-in | PRD-06 | `internal/checkin/` | `QR_SECRET_KEY` env |
+| Queue/Waiting Room | PRD-08 | `internal/queue/` | Redis + `QUEUE_SECRET_KEY` env |
+
 ## Commands
 
 ```bash
@@ -26,6 +35,18 @@ TEST_DATABASE_URL="postgres://dev:dev@localhost:5433/booking_events_test" go tes
 # Apply migration
 psql $DATABASE_URL -f migrations/000001_create_inventory_tables.up.sql
 ```
+
+## API Endpoints
+
+| Method | Path | Modul |
+|---|---|---|
+| `POST` | `/api/v1/tickets/hold` | Inventory |
+| `GET` | `/api/v1/events/{eventID}/metrics` | Dashboard |
+| `POST` | `/api/v1/checkin/issue` | Check-in |
+| `POST` | `/api/v1/checkin/scan` | Check-in |
+| `POST` | `/api/v1/events/{eventID}/queue/join` | Queue |
+| `GET` | `/api/v1/events/{eventID}/queue/status?user_id=` | Queue |
+| `POST` | `/api/v1/queue/token/validate` | Queue |
 
 ## Architecture
 
@@ -61,9 +82,19 @@ Background cleanup (`CronExpiryWorker`) jalan setiap 30 detik dengan `FOR UPDATE
 - **`infrastructure/`** — integration test, butuh Postgres sungguhan via `TEST_DATABASE_URL`. Test utama: `TestPostgresTicketRepo_AntiOversell` (50 goroutine berebut 1 kursi, harus tepat 1 yang berhasil).
 - `TestMain` di `infrastructure/` otomatis skip semua test jika `TEST_DATABASE_URL` tidak di-set.
 
+## Cross-Module Rules
+
+- **Dashboard** (`internal/dashboard/`) baca langsung dari `ticket_units` milik Inventory — read-only, tidak punya domain entity sendiri.
+- **Check-in** (`internal/checkin/`) juga baca dari `ticket_units` — operasi write hanya `AdmitUnit` (atomic UPDATE WHERE status = 'CONFIRMED').
+- Tidak ada modul yang import package dari modul lain (tidak ada `inventory/application` di-import oleh `dashboard/`). Cross-module read dilakukan via SQL langsung di infrastructure masing-masing.
+
 ## Key Design Decisions
 
 - **Hold duration 5 menit fixed** (`application.HoldDuration`) — tidak configurable per-event di MVP.
 - **Status tiket** (`domain/ticket_unit.go`) menggunakan `TEXT + CHECK constraint` di Postgres, bukan ENUM — agar pgx v5 tidak perlu registrasi tipe kustom.
 - **Tidak ada Redis** — hold state hanya di Postgres; cukup untuk MVP.
+- **QR code format** (check-in): `base64url(json_payload) + "." + hex(HMAC-SHA256)`. Tidak ada expiry di QR — validitas cukup dari status CONFIRMED di DB.
+- **Queue token TTL 10 menit** (`application.TokenTTL`) — user punya 10 menit untuk checkout setelah giliran tiba.
+- **Queue release batch 10** per 5 detik — dikonfigurasi di `main.go` saat inisialisasi `ReleaseQueueUseCase`.
+- **Waiting room threshold 100 req/detik** per event — dikonfigurasi di `queue/delivery/http_handler.go` sebagai `waitingRoomThreshold`.
 - **Partial indexes** di `ticket_units`: `idx_ticket_units_available` (WHERE status = 'AVAILABLE') untuk hot path anti-oversell, `idx_ticket_units_held_expired` (WHERE status = 'HELD') untuk cleanup worker.
