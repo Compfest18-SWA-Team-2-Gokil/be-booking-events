@@ -13,6 +13,9 @@ import (
 	"github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	_ "github.com/ebk-tech/be-booking-events/docs"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 func main() {
@@ -46,6 +49,14 @@ func main() {
 	go worker.Start(ctx)
 
 	r := chi.NewRouter()
+
+	r.Get("/docs/*", httpSwagger.Handler(
+		httpSwagger.URL("/docs/doc.json"), //The url pointing to API definition
+	))
+
+	r.Get("/", RootHandler)
+	r.Get("/check-health", HealthCheckHandler(pool))
+
 	h := delivery.NewInventoryHandler(holdUC)
 	r.Post("/api/v1/tickets/hold", h.HoldTicket)
 
