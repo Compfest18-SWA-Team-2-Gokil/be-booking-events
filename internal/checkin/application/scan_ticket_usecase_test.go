@@ -19,6 +19,7 @@ func TestScanTicketUseCase_Execute_Success(t *testing.T) {
 
 	repo := newFakeCheckinRepo()
 	repo.units["unit-1"] = &domain.CheckinTicket{ID: "unit-1", OrderID: "order-1", EventID: "event-1"}
+	repo.assignments["gate-op-1:event-1"] = true // gate operator di-assign ke event ini
 
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
 	uc := application.NewScanTicketUseCase(repo, signer)
@@ -70,6 +71,23 @@ func TestScanTicketUseCase_Execute_WrongQRContent(t *testing.T) {
 	}
 }
 
+func TestScanTicketUseCase_Execute_GateOperatorNotAssigned(t *testing.T) {
+	payload := &domain.QRPayload{
+		TicketUnitID: "unit-1", EventID: "event-1", IssuedAt: time.Now(),
+	}
+	repo := newFakeCheckinRepo()
+	// assignments kosong → gate operator belum di-assign
+	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
+	uc := application.NewScanTicketUseCase(repo, signer)
+
+	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
+		QRContent: "valid.qr", GateOperatorID: "unassigned-gate-op",
+	})
+	if err != domain.ErrGateOperatorNotAssigned {
+		t.Fatalf("expected ErrGateOperatorNotAssigned, got %v", err)
+	}
+}
+
 func TestScanTicketUseCase_Execute_AlreadyAdmitted(t *testing.T) {
 	payload := &domain.QRPayload{
 		TicketUnitID: "unit-1", EventID: "event-1", IssuedAt: time.Now(),
@@ -77,13 +95,14 @@ func TestScanTicketUseCase_Execute_AlreadyAdmitted(t *testing.T) {
 
 	repo := newFakeCheckinRepo()
 	repo.units["unit-1"] = &domain.CheckinTicket{ID: "unit-1", EventID: "event-1"}
-	repo.admittedIDs["unit-1"] = true // sudah admitted sebelumnya
+	repo.admittedIDs["unit-1"] = true            // sudah admitted sebelumnya
+	repo.assignments["gate-op-1:event-1"] = true // gate operator valid
 
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
 	uc := application.NewScanTicketUseCase(repo, signer)
 
 	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
-		QRContent: "valid.qr",
+		QRContent: "valid.qr", GateOperatorID: "gate-op-1",
 	})
 
 	if err != domain.ErrAlreadyAdmitted {
@@ -92,7 +111,7 @@ func TestScanTicketUseCase_Execute_AlreadyAdmitted(t *testing.T) {
 }
 
 func TestScanTicketUseCase_Execute_InvalidPayload(t *testing.T) {
-	// Payload dengan TicketUnitID kosong → Validate() gagal
+	// Payload dengan TicketUnitID kosong → Validate() gagal (sebelum cek assignment)
 	payload := &domain.QRPayload{EventID: "event-1", IssuedAt: time.Now()}
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
 	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer)

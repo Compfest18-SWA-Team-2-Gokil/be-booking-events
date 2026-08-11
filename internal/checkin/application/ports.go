@@ -22,4 +22,7 @@ type CheckinRepository interface {
 	// AdmitUnit melakukan atomic UPDATE: CONFIRMED → ADMITTED.
 	// Mengembalikan ErrAlreadyAdmitted jika 0 baris ter-update.
 	AdmitUnit(ctx context.Context, ticketUnitID, gateOperatorID string) error
+
+	// IsGateOperatorAssigned memvalidasi bahwa gate operator terdaftar untuk event ini.
+	IsGateOperatorAssigned(ctx context.Context, gateOperatorID, eventID string) (bool, error)
 }

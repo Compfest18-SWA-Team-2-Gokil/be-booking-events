@@ -10,12 +10,14 @@ type fakeCheckinRepo struct {
 	units       map[string]*domain.CheckinTicket
 	admittedIDs map[string]bool
 	admitErr    error
+	assignments map[string]bool // "gateOpID:eventID"
 }
 
 func newFakeCheckinRepo() *fakeCheckinRepo {
 	return &fakeCheckinRepo{
 		units:       make(map[string]*domain.CheckinTicket),
 		admittedIDs: make(map[string]bool),
+		assignments: make(map[string]bool),
 	}
 }
 
@@ -36,6 +38,10 @@ func (r *fakeCheckinRepo) AdmitUnit(_ context.Context, unitID, _ string) error {
 	}
 	r.admittedIDs[unitID] = true
 	return nil
+}
+
+func (r *fakeCheckinRepo) IsGateOperatorAssigned(_ context.Context, gateOpID, eventID string) (bool, error) {
+	return r.assignments[gateOpID+":"+eventID], nil
 }
 
 // fakeSigner adalah QRSigner deterministik untuk test: konten valid = validContent.

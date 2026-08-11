@@ -35,6 +35,15 @@ func (uc *ScanTicketUseCase) Execute(ctx context.Context, input ScanTicketInput)
 		return nil, err
 	}
 
+	// RBAC: pastikan gate operator di-assign ke event dari tiket ini.
+	assigned, err := uc.repo.IsGateOperatorAssigned(ctx, input.GateOperatorID, payload.EventID)
+	if err != nil {
+		return nil, err
+	}
+	if !assigned {
+		return nil, domain.ErrGateOperatorNotAssigned
+	}
+
 	// Atomic UPDATE: CONFIRMED → ADMITTED. Jika 0 baris → sudah dipakai atau bukan CONFIRMED.
 	if err := uc.repo.AdmitUnit(ctx, payload.TicketUnitID, input.GateOperatorID); err != nil {
 		return nil, err

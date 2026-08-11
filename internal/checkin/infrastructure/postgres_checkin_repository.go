@@ -64,3 +64,17 @@ func (r *PostgresCheckinRepository) AdmitUnit(ctx context.Context, ticketUnitID,
 
 	return nil
 }
+
+func (r *PostgresCheckinRepository) IsGateOperatorAssigned(ctx context.Context, gateOperatorID, eventID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM gate_operator_assignments
+			WHERE user_id = $1 AND event_id = $2
+		)
+	`, gateOperatorID, eventID).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check gate operator assignment: %w", err)
+	}
+	return exists, nil
+}

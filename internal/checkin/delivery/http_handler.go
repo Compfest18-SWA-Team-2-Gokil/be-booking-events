@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/ebk-tech/be-booking-events/internal/auth/delivery"
 	"github.com/ebk-tech/be-booking-events/internal/checkin/application"
 	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
 )
@@ -23,8 +24,7 @@ type issueRequest struct {
 }
 
 type scanRequest struct {
-	QRContent      string `json:"qr_content"`
-	GateOperatorID string `json:"gate_operator_id"`
+	QRContent string `json:"qr_content"`
 }
 
 // POST /api/v1/checkin/issue
@@ -48,7 +48,8 @@ func (h *CheckinHandler) IssueTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// POST /api/v1/checkin/scan
+// POST /api/v1/checkin/scan  (requires GATE_OPERATOR role)
+// GateOperatorID diambil dari JWT context, bukan request body.
 func (h *CheckinHandler) ScanTicket(w http.ResponseWriter, r *http.Request) {
 	var req scanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.QRContent == "" {
@@ -56,9 +57,10 @@ func (h *CheckinHandler) ScanTicket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	gateOperatorID := delivery.UserIDFromCtx(r.Context())
 	out, err := h.scanUC.Execute(r.Context(), application.ScanTicketInput{
 		QRContent:      req.QRContent,
-		GateOperatorID: req.GateOperatorID,
+		GateOperatorID: gateOperatorID,
 	})
 	if err != nil {
 		switch {
@@ -66,6 +68,8 @@ func (h *CheckinHandler) ScanTicket(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnprocessableEntity, "QR tidak sah")
 		case errors.Is(err, domain.ErrAlreadyAdmitted):
 			writeError(w, http.StatusConflict, "tiket sudah digunakan atau tidak valid")
+		case errors.Is(err, domain.ErrGateOperatorNotAssigned):
+			writeError(w, http.StatusForbidden, err.Error())
 		default:
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
