@@ -32,6 +32,7 @@ type Deps struct {
 
 // Register mendaftarkan semua route ke router.
 func Register(r chi.Router, d Deps) {
+	registerDocs(r)
 	registerAuth(r, d)
 	registerEvents(r, d)
 	registerInventory(r, d)
