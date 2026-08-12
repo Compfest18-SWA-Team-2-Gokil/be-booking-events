@@ -29,9 +29,14 @@ import (
 	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
+	// Attempt to load .env file, but ignore if it doesn't exist
+	_ = godotenv.Load()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -68,6 +73,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Main page + health check
+	
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
 	passwordHasher := authinfra.NewBcryptPasswordHasher()
