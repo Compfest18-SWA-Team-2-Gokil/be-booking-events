@@ -397,7 +397,7 @@ func TestPostgresTicketRepo_UpdateStatus(t *testing.T) {
 		RETURNING id
 	`, typeID).Scan(&unitID)
 
-	orderID := "order-abc-123"
+	orderID := "00000000-0000-0000-0000-000000000001"
 	repo := infrastructure.NewPostgresTicketRepository(pool)
 	err := repo.UpdateStatus(context.Background(), unitID, domain.StatusPaymentPending, &orderID)
 
