@@ -8,6 +8,7 @@ import (
 	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
 	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
 	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
+	ordersdelivery "github.com/ebk-tech/be-booking-events/internal/orders/delivery"
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	"github.com/go-chi/chi/v5"
 )
@@ -28,6 +29,7 @@ type Deps struct {
 	Checkin   *checkindelivery.CheckinHandler
 	Queue     *queuedelivery.QueueHandler
 	Events    *eventsdelivery.EventsHandler
+	Orders    *ordersdelivery.OrdersHandler
 }
 
 // Register mendaftarkan semua route ke router.
@@ -39,4 +41,5 @@ func Register(r chi.Router, d Deps) {
 	registerDashboard(r, d)
 	registerCheckin(r, d)
 	registerQueue(r, d)
+	registerOrders(r, d)
 }

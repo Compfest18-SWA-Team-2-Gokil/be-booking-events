@@ -23,6 +23,9 @@ import (
 	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
 	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
 	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
+	ordersapp "github.com/ebk-tech/be-booking-events/internal/orders/application"
+	ordersdelivery "github.com/ebk-tech/be-booking-events/internal/orders/delivery"
+	ordersinfra "github.com/ebk-tech/be-booking-events/internal/orders/infrastructure"
 	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
@@ -38,6 +41,8 @@ func main() {
 
 	dbURL := mustEnv("DATABASE_URL")
 	jwtSecret := mustEnv("JWT_SECRET_KEY")
+	xenditSecretKey := mustEnv("XENDIT_SECRET_KEY")
+	xenditCallbackToken := mustEnv("XENDIT_CALLBACK_TOKEN")
 	qrSecret := mustEnv("QR_SECRET_KEY")
 	queueSecret := mustEnv("QUEUE_SECRET_KEY")
 	redisURL := mustEnv("REDIS_URL")
@@ -108,6 +113,21 @@ func main() {
 	go queueWorker.Start(ctx)
 	queueHandler := queuedelivery.NewQueueHandler(joinUC, validateTokenUC, queueRepo)
 
+	// --- Orders module ---
+	orderRepo := ordersinfra.NewPostgresOrderRepository(pool)
+	xenditProvider := ordersinfra.NewXenditPaymentProvider(xenditSecretKey)
+	createOrderUC := ordersapp.NewCreateOrderUseCase(orderRepo)
+	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(orderRepo, xenditProvider)
+	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo)
+	requestRefundUC := ordersapp.NewRequestRefundUseCase(orderRepo)
+	approveRefundUC := ordersapp.NewApproveRefundUseCase(orderRepo, xenditProvider)
+	getOrderUC := ordersapp.NewGetOrderUseCase(orderRepo)
+	ordersHandler := ordersdelivery.NewOrdersHandler(
+		createOrderUC, initiatePayUC, confirmPayUC,
+		requestRefundUC, approveRefundUC, getOrderUC,
+		xenditCallbackToken,
+	)
+
 	// --- Events module ---
 	eventRepo := eventsinfra.NewPostgresEventRepository(pool)
 	createEventUC := eventsapp.NewCreateEventUseCase(eventRepo)
@@ -134,6 +154,7 @@ func main() {
 		Checkin:   checkinHandler,
 		Queue:     queueHandler,
 		Events:    eventsHandler,
+		Orders:    ordersHandler,
 	})
 
 	// --- HTTP server ---

@@ -15,6 +15,7 @@ tags:
   - name: Dashboard
   - name: Check-in
   - name: Queue
+  - name: Orders
 
 components:
   securitySchemes:
@@ -35,11 +36,43 @@ components:
       name: ticketTypeID
       in: path
       required: true
+    orderID:
+      name: orderID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
       schema:
         type: string
         format: uuid
 
   schemas:
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        buyer_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, PAYMENT_PENDING, PAID, CANCELLED, REFUND_REQUESTED, REFUNDED]
+        total_amount:
+          type: integer
+          description: Total harga dalam rupiah
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     Error:
       type: object
       properties:
@@ -766,6 +799,200 @@ paths:
                     format: uuid
         "401":
           description: Token tidak valid atau kadaluarsa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # ── ORDERS ────────────────────────────────────────────────────────────────
+  /api/v1/orders:
+    post:
+      tags: [Orders]
+      summary: Buat order dari tiket yang di-hold
+      description: |
+        Membuat order dari unit_ids yang sebelumnya di-hold via `/api/v1/tickets/hold`.
+        Total amount dihitung otomatis dari harga ticket_type masing-masing unit.
+        Hanya BUYER.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_id, unit_ids]
+              properties:
+                event_id:
+                  type: string
+                  format: uuid
+                unit_ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+            example:
+              event_id: "uuid-event"
+              unit_ids: ["uuid-unit-1", "uuid-unit-2"]
+      responses:
+        "201":
+          description: Order berhasil dibuat
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "400":
+          description: Tidak ada unit yang di-hold
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/{orderID}:
+    get:
+      tags: [Orders]
+      summary: Detail order
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/orderID"
+      responses:
+        "200":
+          description: Detail order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Order tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/{orderID}/pay:
+    post:
+      tags: [Orders]
+      summary: Inisiasi pembayaran via Xendit
+      description: |
+        Membuat Xendit invoice dan mengembalikan `invoice_url` yang harus dibuka buyer
+        untuk menyelesaikan pembayaran. Hanya BUYER pemilik order.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/orderID"
+      responses:
+        "200":
+          description: Invoice berhasil dibuat
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payment_id:
+                    type: string
+                    format: uuid
+                  invoice_url:
+                    type: string
+                    description: URL halaman pembayaran Xendit
+        "400":
+          description: Order tidak dalam status PENDING
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/payments/webhook/xendit:
+    post:
+      tags: [Orders]
+      summary: Webhook callback dari Xendit
+      description: |
+        Endpoint public (tidak pakai JWT). Diverifikasi via header `x-callback-token`.
+        Dipanggil otomatis oleh Xendit saat pembayaran sukses atau expired.
+      parameters:
+        - name: x-callback-token
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Xendit invoice ID
+                external_id:
+                  type: string
+                  description: Order ID kita
+                status:
+                  type: string
+                  enum: [PAID, EXPIRED]
+                payment_method:
+                  type: string
+      responses:
+        "200":
+          description: Webhook diproses
+        "401":
+          description: Callback token tidak valid
+
+  /api/v1/orders/{orderID}/refund:
+    post:
+      tags: [Orders]
+      summary: Request refund (BUYER)
+      description: |
+        Buyer mengajukan permintaan refund. Status order menjadi `REFUND_REQUESTED`.
+        Refund baru diproses setelah ORGANIZER approve.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/orderID"
+      responses:
+        "200":
+          description: Refund berhasil di-request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: refund_requested
+        "400":
+          description: Order belum berstatus PAID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/{orderID}/refund/approve:
+    post:
+      tags: [Orders]
+      summary: Approve refund (ORGANIZER)
+      description: |
+        Organizer menyetujui refund. Xendit Refund API dipanggil,
+        order menjadi `REFUNDED`, ticket units menjadi `REFUNDED`.
+        Hanya ORGANIZER.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/orderID"
+      responses:
+        "200":
+          description: Refund berhasil diproses
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: refunded
+        "400":
+          description: Tidak ada permintaan refund untuk order ini
           content:
             application/json:
               schema:
