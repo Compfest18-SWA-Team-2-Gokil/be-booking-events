@@ -397,29 +397,9 @@ func TestPostgresTicketRepo_UpdateStatus(t *testing.T) {
 		RETURNING id
 	`, typeID).Scan(&unitID)
 
-	// Seed user and order for foreign key constraint
-	var userID string
-	err := pool.QueryRow(context.Background(), `
-		INSERT INTO users (email, name, role, password_hash)
-		VALUES ('testbuyer@example.com', 'Test Buyer', 'BUYER', 'hash')
-		RETURNING id
-	`).Scan(&userID)
-	if err != nil {
-		t.Fatalf("seedUser: %v", err)
-	}
-
-	var orderID string
-	err = pool.QueryRow(context.Background(), `
-		INSERT INTO orders (buyer_id, event_id, total_amount)
-		VALUES ($1, $2, 150000)
-		RETURNING id
-	`, userID, eventID).Scan(&orderID)
-	if err != nil {
-		t.Fatalf("seedOrder: %v", err)
-	}
-
+	orderID := "00000000-0000-0000-0000-000000000001"
 	repo := infrastructure.NewPostgresTicketRepository(pool)
-	err = repo.UpdateStatus(context.Background(), unitID, domain.StatusPaymentPending, &orderID)
+	err := repo.UpdateStatus(context.Background(), unitID, domain.StatusPaymentPending, &orderID)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
