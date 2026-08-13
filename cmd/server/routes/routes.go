@@ -21,6 +21,7 @@ type Deps struct {
 	RequireBuyer        func(http.Handler) http.Handler
 	RequireOrganizer    func(http.Handler) http.Handler
 	RequireGateOperator func(http.Handler) http.Handler
+	Idempotency         func(http.Handler) http.Handler
 
 	// Handlers
 	Auth      *authdelivery.AuthHandler

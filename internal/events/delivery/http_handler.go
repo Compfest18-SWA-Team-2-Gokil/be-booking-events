@@ -17,6 +17,7 @@ type EventsHandler struct {
 	createTicketTypeUC *application.CreateTicketTypeUseCase
 	listTicketTypesUC  *application.ListTicketTypesUseCase
 	provisionUnitsUC   *application.ProvisionUnitsUseCase
+	uploadImageUC      *application.UploadEventImageUseCase
 }
 
 func NewEventsHandler(
@@ -25,6 +26,7 @@ func NewEventsHandler(
 	createTicketTypeUC *application.CreateTicketTypeUseCase,
 	listTicketTypesUC *application.ListTicketTypesUseCase,
 	provisionUnitsUC *application.ProvisionUnitsUseCase,
+	uploadImageUC *application.UploadEventImageUseCase,
 ) *EventsHandler {
 	return &EventsHandler{
 		createEventUC:      createEventUC,
@@ -32,6 +34,7 @@ func NewEventsHandler(
 		createTicketTypeUC: createTicketTypeUC,
 		listTicketTypesUC:  listTicketTypesUC,
 		provisionUnitsUC:   provisionUnitsUC,
+		uploadImageUC:      uploadImageUC,
 	}
 }
 
@@ -42,6 +45,7 @@ func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		Date     string `json:"date"` // RFC3339
 		Location string `json:"location"`
 	}
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "request body tidak valid")
 		return
@@ -148,6 +152,56 @@ func (h *EventsHandler) ProvisionUnits(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// POST /api/v1/events/{eventID}/image
+func (h *EventsHandler) UploadImage(w http.ResponseWriter, r *http.Request) {
+	eventID := chi.URLParam(r, "eventID")
+	organizerID := authdelivery.UserIDFromCtx(r.Context())
+
+	// Batasi ukuran request 5MB + overhead multipart.
+	r.Body = http.MaxBytesReader(w, r.Body, 6*1024*1024)
+	if err := r.ParseMultipartForm(5 * 1024 * 1024); err != nil {
+		writeError(w, http.StatusBadRequest, "file terlalu besar atau format tidak valid")
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "field 'image' wajib diisi")
+		return
+	}
+	defer file.Close()
+
+	// Baca isi file dan deteksi MIME type dari 512 byte pertama.
+	buf := make([]byte, header.Size)
+	if _, err := file.Read(buf); err != nil {
+		writeError(w, http.StatusInternalServerError, "gagal membaca file")
+		return
+	}
+	contentType := http.DetectContentType(buf)
+
+	out, err := h.uploadImageUC.Execute(r.Context(), application.UploadEventImageInput{
+		EventID:     eventID,
+		OrganizerID: organizerID,
+		Data:        buf,
+		ContentType: contentType,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrFileTooLarge):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, application.ErrInvalidFileType):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, domain.ErrEventNotFound):
+			writeError(w, http.StatusNotFound, "event tidak ditemukan")
+		default:
+			writeError(w, http.StatusInternalServerError, "gagal upload gambar")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 func writeValidationOrServerError(w http.ResponseWriter, err error) {
