@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/ebk-tech/be-booking-events/internal/appconfig"
 	"github.com/ebk-tech/be-booking-events/internal/auth/application"
 	"github.com/ebk-tech/be-booking-events/internal/auth/domain"
 	"github.com/go-chi/chi/v5"
@@ -78,7 +79,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, domain.ErrInvalidRole):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeInternalError(w, err)
 		}
 		return
 	}
@@ -102,7 +103,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, err.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal error")
+		writeInternalError(w, err)
 		return
 	}
 
@@ -150,7 +151,7 @@ func (h *AuthHandler) AssignGateOperator(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, domain.ErrNotGateOperator):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
-			writeError(w, http.StatusInternalServerError, "internal error")
+			writeInternalError(w, err)
 		}
 		return
 	}
@@ -166,4 +167,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// writeInternalError menulis 500 response.
+// Jika APP_DEBUG=true, pesan error asli akan ditampilkan untuk memudahkan debugging.
+// Jika APP_DEBUG=false (production), hanya pesan generik yang dikembalikan.
+func writeInternalError(w http.ResponseWriter, err error) {
+	msg := "internal server error"
+	if appconfig.IsDebug() {
+		msg = err.Error()
+	}
+	writeError(w, http.StatusInternalServerError, msg)
 }

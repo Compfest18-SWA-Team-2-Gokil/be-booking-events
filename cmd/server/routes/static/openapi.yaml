@@ -39,6 +39,22 @@ components:
         type: string
         format: uuid
 
+  parameters:
+    eventID:
+      name: eventID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ticketTypeID:
+      name: ticketTypeID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
   schemas:
     Error:
       type: object
@@ -770,3 +786,4 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
