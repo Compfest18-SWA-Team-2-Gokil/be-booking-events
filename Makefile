@@ -1,7 +1,4 @@
-.PHONY: migrate seed test run setup
-
-migrate:
-	go run ./cmd/migrate up
+.PHONY: seed test run setup check
 
 seed:
 	go run ./cmd/seed
@@ -12,6 +9,6 @@ test:
 run:
 	go run ./cmd/server
 
-setup: migrate seed
+setup: seed
 
 check: test
