@@ -36,13 +36,13 @@ components:
       name: ticketTypeID
       in: path
       required: true
+      schema:
+        type: string
+        format: uuid
     orderID:
       name: orderID
       in: path
       required: true
-      schema:
-        type: string
-        format: uuid
       schema:
         type: string
         format: uuid
@@ -111,6 +111,9 @@ components:
           format: date-time
         location:
           type: string
+        image_url:
+          type: string
+          description: URL gambar event di MinIO (opsional)
 
     TicketType:
       type: object
@@ -360,6 +363,61 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/Event"
+
+  /api/v1/events/{eventID}/image:
+    post:
+      tags: [Events]
+      summary: Upload gambar event
+      description: |
+        Upload gambar untuk event. Format yang didukung: JPEG, PNG, WebP.
+        Ukuran maksimal 5MB. File disimpan di MinIO object storage dengan public-read access.
+        Hanya ORGANIZER pemilik event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: File gambar (JPEG/PNG/WebP, maks 5MB)
+      responses:
+        "200":
+          description: Gambar berhasil diupload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  image_url:
+                    type: string
+                    description: URL publik gambar di MinIO
+                    example: "http://localhost:9000/event-images/events/uuid/1234567890.jpg"
+        "400":
+          description: File terlalu besar atau format tidak didukung
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan organizer event ini
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/events/{eventID}/ticket-types:
     post:
@@ -813,8 +871,19 @@ paths:
         Membuat order dari unit_ids yang sebelumnya di-hold via `/api/v1/tickets/hold`.
         Total amount dihitung otomatis dari harga ticket_type masing-masing unit.
         Hanya BUYER.
+
+        **Idempotency**: Kirim header `Idempotency-Key` (string unik, contoh UUID) untuk
+        mencegah duplikasi order saat retry. Request ulang dengan key yang sama mengembalikan
+        respons awal dengan header `Idempotency-Replayed: true`.
       security:
         - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Key unik untuk mencegah duplikasi (disarankan UUID)
       requestBody:
         required: true
         content:
@@ -877,10 +946,18 @@ paths:
       description: |
         Membuat Xendit invoice dan mengembalikan `invoice_url` yang harus dibuka buyer
         untuk menyelesaikan pembayaran. Hanya BUYER pemilik order.
+
+        **Idempotency**: Gunakan header `Idempotency-Key` untuk mencegah pembuatan invoice
+        duplikat saat retry.
       security:
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/orderID"
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
       responses:
         "200":
           description: Invoice berhasil dibuat

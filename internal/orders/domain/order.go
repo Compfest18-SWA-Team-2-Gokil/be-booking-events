@@ -20,24 +20,24 @@ const (
 )
 
 type Order struct {
-	ID          string
-	BuyerID     string
-	EventID     string
-	Status      OrderStatus
-	TotalAmount int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          string      `json:"id"`
+	BuyerID     string      `json:"buyer_id"`
+	EventID     string      `json:"event_id"`
+	Status      OrderStatus `json:"status"`
+	TotalAmount int64       `json:"total_amount"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 type Payment struct {
-	ID               string
-	OrderID          string
-	Amount           int64
-	Status           PaymentStatus
-	PaymentMethod    string
-	XenditInvoiceID  string
-	XenditInvoiceURL string
-	XenditRefundID   string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string        `json:"id"`
+	OrderID          string        `json:"order_id"`
+	Amount           int64         `json:"amount"`
+	Status           PaymentStatus `json:"status"`
+	PaymentMethod    string        `json:"payment_method,omitempty"`
+	XenditInvoiceID  string        `json:"xendit_invoice_id,omitempty"`
+	XenditInvoiceURL string        `json:"xendit_invoice_url,omitempty"`
+	XenditRefundID   string        `json:"xendit_refund_id,omitempty"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
 }
