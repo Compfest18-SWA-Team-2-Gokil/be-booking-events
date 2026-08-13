@@ -21,4 +21,12 @@ type EventRepository interface {
 
 	// CountProvisionedUnits menghitung berapa unit sudah dibuat untuk TicketType ini.
 	CountProvisionedUnits(ctx context.Context, ticketTypeID string) (int, error)
+
+	// UpdateEventImageURL menyimpan URL gambar event setelah upload ke object storage.
+	UpdateEventImageURL(ctx context.Context, eventID, imageURL string) error
+}
+
+// StorageProvider abstraksi ke object storage (MinIO, S3, dll).
+type StorageProvider interface {
+	UploadImage(ctx context.Context, objectKey string, data []byte, contentType string) (publicURL string, err error)
 }

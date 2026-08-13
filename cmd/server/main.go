@@ -20,6 +20,7 @@ import (
 	eventsapp "github.com/ebk-tech/be-booking-events/internal/events/application"
 	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
 	eventsinfra "github.com/ebk-tech/be-booking-events/internal/events/infrastructure"
+	"strconv"
 	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
 	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
 	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
@@ -43,6 +44,12 @@ func main() {
 	jwtSecret := mustEnv("JWT_SECRET_KEY")
 	xenditSecretKey := mustEnv("XENDIT_SECRET_KEY")
 	xenditCallbackToken := mustEnv("XENDIT_CALLBACK_TOKEN")
+	minioEndpoint := mustEnv("MINIO_ENDPOINT")
+	minioAccessKey := mustEnv("MINIO_ACCESS_KEY")
+	minioSecretKey := mustEnv("MINIO_SECRET_KEY")
+	minioBucket := mustEnv("MINIO_BUCKET")
+	minioPublicURL := mustEnv("MINIO_PUBLIC_URL")
+	minioUseSSL, _ := strconv.ParseBool(os.Getenv("MINIO_USE_SSL"))
 	qrSecret := mustEnv("QR_SECRET_KEY")
 	queueSecret := mustEnv("QUEUE_SECRET_KEY")
 	redisURL := mustEnv("REDIS_URL")
@@ -128,6 +135,19 @@ func main() {
 		xenditCallbackToken,
 	)
 
+	// --- MinIO ---
+	minioStorage, err := eventsinfra.NewMinIOStorageProvider(
+		minioEndpoint, minioAccessKey, minioSecretKey, minioBucket, minioPublicURL, minioUseSSL,
+	)
+	if err != nil {
+		slog.Error("gagal koneksi ke MinIO", "err", err)
+		os.Exit(1)
+	}
+	if err := minioStorage.EnsureBucket(ctx); err != nil {
+		slog.Error("gagal setup MinIO bucket", "err", err)
+		os.Exit(1)
+	}
+
 	// --- Events module ---
 	eventRepo := eventsinfra.NewPostgresEventRepository(pool)
 	createEventUC := eventsapp.NewCreateEventUseCase(eventRepo)
@@ -135,8 +155,9 @@ func main() {
 	createTicketTypeUC := eventsapp.NewCreateTicketTypeUseCase(eventRepo)
 	listTicketTypesUC := eventsapp.NewListTicketTypesUseCase(eventRepo)
 	provisionUnitsUC := eventsapp.NewProvisionUnitsUseCase(eventRepo)
+	uploadImageUC := eventsapp.NewUploadEventImageUseCase(eventRepo, minioStorage)
 	eventsHandler := eventsdelivery.NewEventsHandler(
-		createEventUC, listEventsUC, createTicketTypeUC, listTicketTypesUC, provisionUnitsUC,
+		createEventUC, listEventsUC, createTicketTypeUC, listTicketTypesUC, provisionUnitsUC, uploadImageUC,
 	)
 
 	// --- Router ---
