@@ -27,6 +27,7 @@ import (
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
 	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
+	"github.com/ebk-tech/be-booking-events/internal/migration"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -58,6 +59,28 @@ func main() {
 		slog.Error("database ping failed", "err", err)
 		os.Exit(1)
 	}
+
+	// --- Run Auto-Migration ---
+	slog.Info("running database auto-migration...")
+	dbConn, err := pool.Acquire(ctx)
+	if err != nil {
+		slog.Error("failed to acquire db connection for migration", "err", err)
+		os.Exit(1)
+	}
+	
+	if err := migration.EnsureLogTable(ctx, dbConn.Conn()); err != nil {
+		slog.Error("failed to ensure migration log table", "err", err)
+		dbConn.Release()
+		os.Exit(1)
+	}
+
+	if err := migration.RunUp(ctx, dbConn.Conn()); err != nil {
+		slog.Error("database auto-migration failed", "err", err)
+		dbConn.Release()
+		os.Exit(1)
+	}
+	dbConn.Release()
+	slog.Info("database auto-migration completed successfully")
 
 	// --- Redis ---
 	redisOpts, err := redis.ParseURL(redisURL)
