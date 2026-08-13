@@ -75,9 +75,10 @@ func (p *XenditPaymentProvider) CreateInvoice(ctx context.Context, input applica
 
 func (p *XenditPaymentProvider) RefundPayment(ctx context.Context, invoiceID string, amount int64) (string, error) {
 	body, _ := json.Marshal(map[string]any{
-		"payment_request_id": invoiceID,
-		"reason":             "CANCELLATION",
-		"amount":             amount,
+		"invoice_id": invoiceID,
+		"currency":   "IDR",
+		"reason":     "CANCELLATION",
+		"amount":     amount,
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,

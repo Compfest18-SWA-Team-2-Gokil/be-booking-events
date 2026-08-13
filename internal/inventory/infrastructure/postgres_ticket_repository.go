@@ -56,9 +56,10 @@ func (r *PostgresTicketRepository) HoldAvailableUnits(
 	}
 
 	// 2. Lazy expiry: rilis unit HELD kadaluarsa untuk semua tipe yang relevan.
+	// order_id ikut di-clear agar unit bisa di-hold dan di-order ulang tanpa konflik.
 	_, err = tx.Exec(ctx, `
 		UPDATE ticket_units
-		SET status = 'AVAILABLE', held_until = NULL, updated_at = NOW()
+		SET status = 'AVAILABLE', held_until = NULL, order_id = NULL, updated_at = NOW()
 		WHERE ticket_type_id = ANY($1)
 		  AND status = 'HELD'
 		  AND held_until < NOW()
@@ -131,7 +132,7 @@ func (r *PostgresTicketRepository) ExpireHeldUnits(ctx context.Context) (int, er
 	// worker tidak perlu menunggu dan tidak akan menghambat flow checkout.
 	tag, err := r.pool.Exec(ctx, `
 		UPDATE ticket_units
-		SET status = 'AVAILABLE', held_until = NULL, updated_at = NOW()
+		SET status = 'AVAILABLE', held_until = NULL, order_id = NULL, updated_at = NOW()
 		WHERE id IN (
 			SELECT id FROM ticket_units
 			WHERE status = 'HELD'
