@@ -31,6 +31,7 @@ import (
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
 	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
+	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -168,6 +169,7 @@ func main() {
 		RequireBuyer:        authdelivery.RequireRole("BUYER"),
 		RequireOrganizer:    authdelivery.RequireRole("ORGANIZER"),
 		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
+		Idempotency:         appmiddleware.Idempotency(redisClient),
 
 		Auth:      authHandler,
 		Inventory: inventoryHandler,

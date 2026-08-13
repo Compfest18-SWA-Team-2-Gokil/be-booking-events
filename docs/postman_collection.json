@@ -1,0 +1,446 @@
+{
+  "info": {
+    "name": "BE Booking Events API",
+    "description": "Collection lengkap untuk testing manual semua endpoint",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8080" },
+    { "key": "buyer_token", "value": "" },
+    { "key": "organizer_token", "value": "" },
+    { "key": "gate_token", "value": "" },
+    { "key": "event_id", "value": "" },
+    { "key": "ticket_type_id", "value": "" },
+    { "key": "unit_ids", "value": "" },
+    { "key": "order_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register (Buyer)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer@example.com\",\n  \"name\": \"Test Buyer\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register (Organizer seed)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"organizer@example.com\",\n  \"name\": \"Test Organizer\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Setelah register, set role ORGANIZER via DB manual:",
+                  "// UPDATE users SET role='ORGANIZER' WHERE email='organizer@example.com';"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Buyer)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer@example.com\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('buyer_token', json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login (Organizer)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"organizer@example.com\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('organizer_token', json.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/auth/me",
+            "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "Create Event",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Konser Jakarta 2027\",\n  \"date\": \"2027-06-15T19:00:00+07:00\",\n  \"location\": \"GBK Jakarta\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('event_id', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Events",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/events",
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          }
+        },
+        {
+          "name": "Upload Event Image",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/image",
+            "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": "" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Ticket Type",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/ticket-types",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Festival GA\",\n  \"price\": 150000,\n  \"kind\": \"GA\",\n  \"total_quota\": 5000\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('ticket_type_id', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Ticket Types",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/ticket-types",
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          }
+        },
+        {
+          "name": "Provision Units",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/ticket-types/{{ticket_type_id}}/provision",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1000\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "Hold Ticket",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/tickets/hold",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{buyer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"ticket_type_id\": \"{{ticket_type_id}}\",\n      \"quantity\": 2\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('unit_ids', JSON.stringify(json.unit_ids));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Orders & Payments",
+      "item": [
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/orders",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{buyer_token}}" },
+              { "key": "Idempotency-Key", "value": "order-unique-key-001" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"{{event_id}}\",\n  \"unit_ids\": {{unit_ids}}\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('order_id', json.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Order",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}",
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          }
+        },
+        {
+          "name": "Initiate Payment (get invoice_url)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/pay",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{buyer_token}}" },
+              { "key": "Idempotency-Key", "value": "pay-unique-key-001" }
+            ]
+          }
+        },
+        {
+          "name": "Xendit Webhook (simulate PAID)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/payments/webhook/xendit",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-callback-token", "value": "{{xendit_callback_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"xendit-invoice-id\",\n  \"external_id\": \"{{order_id}}\",\n  \"status\": \"PAID\",\n  \"payment_method\": \"CREDIT_CARD\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Request Refund (Buyer)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/refund",
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          }
+        },
+        {
+          "name": "Approve Refund (Organizer)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/orders/{{order_id}}/refund/approve",
+            "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Event Metrics",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/metrics",
+            "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Check-in",
+      "item": [
+        {
+          "name": "Assign Gate Operator",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/gate-operators",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"<gate-operator-user-id>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Issue QR Code",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/checkin/issue",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket_unit_id\": \"<unit-id>\",\n  \"order_id\": \"{{order_id}}\",\n  \"event_id\": \"{{event_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Scan QR Code",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/checkin/scan",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{gate_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qr_content\": \"<qr-string-dari-issue>\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Queue (Waiting Room)",
+      "item": [
+        {
+          "name": "Join Queue",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/queue/join",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{buyer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"<buyer-user-id>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Queue Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/events/{{event_id}}/queue/status?user_id=<buyer-user-id>",
+              "query": [{ "key": "user_id", "value": "<buyer-user-id>" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          }
+        },
+        {
+          "name": "Validate Queue Token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/queue/token/validate",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{buyer_token}}" },
+              { "key": "X-Queue-Token", "value": "<queue-token-dari-status>" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Docs",
+      "item": [
+        {
+          "name": "Swagger UI",
+          "request": { "method": "GET", "url": "{{base_url}}/docs" }
+        },
+        {
+          "name": "OpenAPI YAML",
+          "request": { "method": "GET", "url": "{{base_url}}/docs/openapi.yaml" }
+        }
+      ]
+    }
+  ]
+}
