@@ -106,6 +106,13 @@ components:
           format: uuid
         name:
           type: string
+        description:
+          type: string
+          description: Deskripsi event (opsional)
+        category:
+          type: string
+          enum: [music, olahraga, seni, workshop]
+          description: Kategori event
         date:
           type: string
           format: date-time
@@ -113,7 +120,7 @@ components:
           type: string
         image_url:
           type: string
-          description: URL gambar event di MinIO (opsional)
+          description: URL gambar event di MinIO object storage (hanya ada jika sudah diupload)
 
     TicketType:
       type: object
@@ -330,7 +337,8 @@ paths:
                   description: Deskripsi event (opsional)
                 category:
                   type: string
-                  description: "Kategori event (opsional, misal: MUSIC, SPORT, TECH)"
+                  enum: [music, olahraga, seni, workshop]
+                  description: "Kategori event (wajib). Nilai valid: music, olahraga, seni, workshop"
                 date:
                   type: string
                   format: date-time
