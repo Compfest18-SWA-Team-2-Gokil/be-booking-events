@@ -34,10 +34,14 @@ import (
 	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
+	// Attempt to load .env file, but ignore if it doesn't exist
+	_ = godotenv.Load()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -74,6 +78,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Run Auto-Migration ---
+	slog.Info("running database auto-migration...")
+	dbConn, err := pool.Acquire(ctx)
+	if err != nil {
+		slog.Error("failed to acquire db connection for migration", "err", err)
+		os.Exit(1)
+	}
+	
+	if err := migration.EnsureLogTable(ctx, dbConn.Conn()); err != nil {
+		slog.Error("failed to ensure migration log table", "err", err)
+		dbConn.Release()
+		os.Exit(1)
+	}
+
+	if err := migration.RunUp(ctx, dbConn.Conn()); err != nil {
+		slog.Error("database auto-migration failed", "err", err)
+		dbConn.Release()
+		os.Exit(1)
+	}
+	dbConn.Release()
+	slog.Info("database auto-migration completed successfully")
+
 	// --- Redis ---
 	redisOpts, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -88,6 +114,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Main page + health check
+	
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
 	passwordHasher := authinfra.NewBcryptPasswordHasher()

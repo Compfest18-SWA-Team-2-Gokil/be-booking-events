@@ -1,0 +1,44 @@
+basePath: /
+host: localhost:8080
+info:
+  contact: {}
+  description: This is a sample server for Booking Events API.
+  title: Booking Events API
+  version: "1.0"
+paths:
+  /:
+    get:
+      description: responds with hello world message
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get Hello World
+      tags:
+      - Health
+  /check-health:
+    get:
+      description: Check health status and total tickets count in DB
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Check API Health
+      tags:
+      - Health
+swagger: "2.0"
