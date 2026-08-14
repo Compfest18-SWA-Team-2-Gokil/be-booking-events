@@ -56,7 +56,13 @@ func main() {
 	redisURL := mustEnv("REDIS_URL")
 
 	// --- Postgres ---
-	pool, err := pgxpool.New(ctx, dbURL)
+	poolCfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		slog.Error("failed to parse database URL", "err", err)
+		os.Exit(1)
+	}
+	poolCfg.MaxConns = 50 // cukup untuk 1000 concurrent req (DB bottleneck di lock, bukan koneksi)
+	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		slog.Error("failed to connect to database", "err", err)
 		os.Exit(1)
