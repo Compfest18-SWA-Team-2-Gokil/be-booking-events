@@ -17,6 +17,8 @@ func NewCreateEventUseCase(repo EventRepository) *CreateEventUseCase {
 type CreateEventInput struct {
 	OrganizerID string
 	Name        string
+	Description string
+	Category    string
 	Date        string // RFC3339
 	Location    string
 }
@@ -30,6 +32,8 @@ func (uc *CreateEventUseCase) Execute(ctx context.Context, input CreateEventInpu
 	event := &domain.Event{
 		OrganizerID: input.OrganizerID,
 		Name:        input.Name,
+		Description: input.Description,
+		Category:    domain.Category(input.Category),
 		Date:        date,
 		Location:    input.Location,
 	}

@@ -187,13 +187,20 @@ func main() {
 	// --- Events module ---
 	eventRepo := eventsinfra.NewPostgresEventRepository(pool)
 	createEventUC := eventsapp.NewCreateEventUseCase(eventRepo)
+	getEventUC := eventsapp.NewGetEventUseCase(eventRepo)
 	listEventsUC := eventsapp.NewListEventsUseCase(eventRepo)
+	updateEventUC := eventsapp.NewUpdateEventUseCase(eventRepo)
+	deleteEventUC := eventsapp.NewDeleteEventUseCase(eventRepo)
 	createTicketTypeUC := eventsapp.NewCreateTicketTypeUseCase(eventRepo)
 	listTicketTypesUC := eventsapp.NewListTicketTypesUseCase(eventRepo)
+	updateTicketTypeUC := eventsapp.NewUpdateTicketTypeUseCase(eventRepo)
+	deleteTicketTypeUC := eventsapp.NewDeleteTicketTypeUseCase(eventRepo)
 	provisionUnitsUC := eventsapp.NewProvisionUnitsUseCase(eventRepo)
 	uploadImageUC := eventsapp.NewUploadEventImageUseCase(eventRepo, minioStorage)
 	eventsHandler := eventsdelivery.NewEventsHandler(
-		createEventUC, listEventsUC, createTicketTypeUC, listTicketTypesUC, provisionUnitsUC, uploadImageUC,
+		createEventUC, getEventUC, listEventsUC, updateEventUC, deleteEventUC,
+		createTicketTypeUC, listTicketTypesUC, updateTicketTypeUC, deleteTicketTypeUC,
+		provisionUnitsUC, uploadImageUC,
 	)
 
 	// --- Router ---
