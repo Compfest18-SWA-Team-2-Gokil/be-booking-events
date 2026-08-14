@@ -309,16 +309,13 @@ paths:
   /api/v1/events:
     post:
       tags: [Events]
-      summary: Buat event baru (dengan opsional upload gambar)
+      summary: Buat event baru (dengan foto wajib)
       description: |
         Hanya ORGANIZER. OrganizerID otomatis dari JWT.
 
-        Request menggunakan `multipart/form-data`. Field teks dikirim sebagai form fields,
-        gambar dikirim sebagai file field `image` (opsional, JPEG/PNG/WebP, maks 5MB).
-
-        Jika `image` disertakan, gambar langsung terupload dan `image_url` akan ada di response.
-        Jika upload gambar gagal, event tetap berhasil dibuat (tanpa `image_url`).
-        Untuk update gambar setelah event dibuat, gunakan `POST /api/v1/events/{eventID}/image`.
+        Request menggunakan `multipart/form-data`. Semua field termasuk `image` **wajib** diisi.
+        Foto di-upload ke MinIO object storage; URL-nya langsung ada di response (`image_url`).
+        Untuk update foto setelah event dibuat, gunakan `POST /api/v1/events/{eventID}/image`.
       security:
         - BearerAuth: []
       requestBody:
@@ -327,7 +324,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [name, date, location]
+              required: [name, date, location, category, image]
               properties:
                 name:
                   type: string
@@ -338,7 +335,7 @@ paths:
                 category:
                   type: string
                   enum: [music, olahraga, seni, workshop]
-                  description: "Kategori event (wajib). Nilai valid: music, olahraga, seni, workshop"
+                  description: "Kategori event. Nilai valid: music, olahraga, seni, workshop"
                 date:
                   type: string
                   format: date-time
@@ -349,7 +346,7 @@ paths:
                 image:
                   type: string
                   format: binary
-                  description: Gambar event (opsional, JPEG/PNG/WebP, maks 5MB)
+                  description: "Foto event — wajib (JPEG/PNG/WebP, maks 5MB)"
       responses:
         "201":
           description: Event berhasil dibuat. `image_url` ada jika gambar berhasil diupload.

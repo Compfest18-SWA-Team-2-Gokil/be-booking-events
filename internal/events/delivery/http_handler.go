@@ -55,16 +55,26 @@ func NewEventsHandler(
 }
 
 // POST /api/v1/events
-// Menerima multipart/form-data. Field teks: name, description, category, date, location.
-// Field opsional: image (JPEG/PNG/WebP, maks 5MB).
+// Menerima multipart/form-data. Field wajib: name, date, location, category, image.
 func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 6*1024*1024)
 	if err := r.ParseMultipartForm(5 * 1024 * 1024); err != nil {
-		// Fallback: coba parse sebagai JSON biasa (backward-compat, tanpa gambar)
-		if err2 := r.ParseForm(); err2 != nil {
-			writeError(w, http.StatusBadRequest, "request tidak valid")
-			return
-		}
+		writeError(w, http.StatusBadRequest, "request harus multipart/form-data, file terlalu besar, atau format tidak valid")
+		return
+	}
+
+	// Foto wajib — tolak request sebelum menyentuh DB jika tidak ada.
+	file, header, fileErr := r.FormFile("image")
+	if fileErr != nil {
+		writeError(w, http.StatusBadRequest, "field 'image' wajib diisi (JPEG/PNG/WebP, maks 5MB)")
+		return
+	}
+	defer file.Close()
+
+	buf := make([]byte, header.Size)
+	if _, err := file.Read(buf); err != nil {
+		writeError(w, http.StatusBadRequest, "gagal membaca file gambar")
+		return
 	}
 
 	organizerID := authdelivery.UserIDFromCtx(r.Context())
@@ -81,25 +91,26 @@ func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upload gambar jika ada field "image".
-	file, header, fileErr := r.FormFile("image")
-	if fileErr == nil {
-		defer file.Close()
-		buf := make([]byte, header.Size)
-		if _, err := file.Read(buf); err == nil {
-			out, uploadErr := h.uploadImageUC.Execute(r.Context(), application.UploadEventImageInput{
-				EventID:     event.ID,
-				OrganizerID: organizerID,
-				Data:        buf,
-				ContentType: http.DetectContentType(buf),
-			})
-			if uploadErr == nil {
-				event.ImageURL = out.ImageURL
-			}
-			// Upload gagal tidak membatalkan pembuatan event — event tetap dibuat.
+	// Upload foto ke MinIO — kalau gagal, hapus event yang baru dibuat agar tidak ada event tanpa foto.
+	out, uploadErr := h.uploadImageUC.Execute(r.Context(), application.UploadEventImageInput{
+		EventID:     event.ID,
+		OrganizerID: organizerID,
+		Data:        buf,
+		ContentType: http.DetectContentType(buf),
+	})
+	if uploadErr != nil {
+		switch {
+		case errors.Is(uploadErr, application.ErrFileTooLarge):
+			writeError(w, http.StatusBadRequest, uploadErr.Error())
+		case errors.Is(uploadErr, application.ErrInvalidFileType):
+			writeError(w, http.StatusBadRequest, uploadErr.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "gagal upload gambar ke storage")
 		}
+		return
 	}
 
+	event.ImageURL = out.ImageURL
 	writeJSON(w, http.StatusCreated, event)
 }
 
