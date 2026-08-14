@@ -31,6 +31,7 @@ import (
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
 	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
+	"github.com/ebk-tech/be-booking-events/internal/migration"
 	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
