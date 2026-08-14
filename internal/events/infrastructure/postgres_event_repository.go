@@ -32,9 +32,14 @@ func (r *PostgresEventRepository) CreateEvent(ctx context.Context, e *domain.Eve
 	return nil
 }
 
+func (r *PostgresEventRepository) UpdateEventImageURL(ctx context.Context, eventID, imageURL string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE events SET image_url = $1 WHERE id = $2`, imageURL, eventID)
+	return err
+}
+
 func (r *PostgresEventRepository) ListEvents(ctx context.Context) ([]*domain.Event, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, COALESCE(organizer_id::text, ''), name, date, location
+		SELECT id, COALESCE(organizer_id::text, ''), name, date, location, COALESCE(image_url, '')
 		FROM events
 		ORDER BY date ASC
 	`)
@@ -46,7 +51,7 @@ func (r *PostgresEventRepository) ListEvents(ctx context.Context) ([]*domain.Eve
 	var events []*domain.Event
 	for rows.Next() {
 		e := &domain.Event{}
-		if err := rows.Scan(&e.ID, &e.OrganizerID, &e.Name, &e.Date, &e.Location); err != nil {
+		if err := rows.Scan(&e.ID, &e.OrganizerID, &e.Name, &e.Date, &e.Location, &e.ImageURL); err != nil {
 			return nil, fmt.Errorf("scan event: %w", err)
 		}
 		events = append(events, e)
@@ -57,9 +62,9 @@ func (r *PostgresEventRepository) ListEvents(ctx context.Context) ([]*domain.Eve
 func (r *PostgresEventRepository) GetEvent(ctx context.Context, eventID string) (*domain.Event, error) {
 	e := &domain.Event{}
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, COALESCE(organizer_id::text, ''), name, date, location
+		SELECT id, COALESCE(organizer_id::text, ''), name, date, location, COALESCE(image_url, '')
 		FROM events WHERE id = $1
-	`, eventID).Scan(&e.ID, &e.OrganizerID, &e.Name, &e.Date, &e.Location)
+	`, eventID).Scan(&e.ID, &e.OrganizerID, &e.Name, &e.Date, &e.Location, &e.ImageURL)
 	if err == pgx.ErrNoRows {
 		return nil, domain.ErrEventNotFound
 	}

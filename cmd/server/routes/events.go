@@ -8,6 +8,7 @@ func registerEvents(r chi.Router, d Deps) {
 
 		// ORGANIZER: manage events & ticket types
 		r.With(d.RequireOrganizer).Post("/api/v1/events", d.Events.CreateEvent)
+		r.With(d.RequireOrganizer).Post("/api/v1/events/{eventID}/image", d.Events.UploadImage)
 		r.With(d.RequireOrganizer).Post("/api/v1/events/{eventID}/ticket-types", d.Events.CreateTicketType)
 		r.With(d.RequireOrganizer).Post("/api/v1/events/{eventID}/ticket-types/{ticketTypeID}/provision", d.Events.ProvisionUnits)
 

@@ -15,6 +15,7 @@ type Event struct {
 	Name        string    `json:"name"`
 	Date        time.Time `json:"date"`
 	Location    string    `json:"location"`
+	ImageURL    string    `json:"image_url,omitempty"`
 }
 
 func (e *Event) Validate() error {

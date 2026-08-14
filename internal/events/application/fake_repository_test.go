@@ -74,3 +74,10 @@ func (r *fakeEventRepo) ProvisionUnits(_ context.Context, ticketTypeID string, q
 func (r *fakeEventRepo) CountProvisionedUnits(_ context.Context, ticketTypeID string) (int, error) {
 	return r.unitCounts[ticketTypeID], nil
 }
+
+func (r *fakeEventRepo) UpdateEventImageURL(_ context.Context, eventID, imageURL string) error {
+	if e, ok := r.events[eventID]; ok {
+		e.ImageURL = imageURL
+	}
+	return nil
+}
