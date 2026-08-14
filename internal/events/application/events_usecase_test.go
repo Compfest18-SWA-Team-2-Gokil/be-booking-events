@@ -17,6 +17,7 @@ func TestCreateEventUseCase_Execute_Success(t *testing.T) {
 	event, err := uc.Execute(context.Background(), application.CreateEventInput{
 		OrganizerID: "org-1",
 		Name:        "Konser Jakarta",
+		Category:    "music",
 		Date:        futureDate,
 		Location:    "GBK Jakarta",
 	})
@@ -38,6 +39,7 @@ func TestCreateEventUseCase_Execute_DateInPast(t *testing.T) {
 	_, err := uc.Execute(context.Background(), application.CreateEventInput{
 		OrganizerID: "org-1",
 		Name:        "Old Event",
+		Category:    "music",
 		Date:        "2020-01-01T00:00:00Z",
 		Location:    "Jakarta",
 	})
@@ -53,6 +55,7 @@ func TestCreateEventUseCase_Execute_MissingFields(t *testing.T) {
 	_, err := uc.Execute(context.Background(), application.CreateEventInput{
 		OrganizerID: "org-1",
 		Name:        "",
+		Category:    "music",
 		Date:        futureDate,
 		Location:    "Jakarta",
 	})

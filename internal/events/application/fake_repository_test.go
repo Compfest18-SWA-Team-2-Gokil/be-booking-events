@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 
+	"github.com/ebk-tech/be-booking-events/internal/events/application"
 	"github.com/ebk-tech/be-booking-events/internal/events/domain"
 )
 
@@ -10,6 +11,7 @@ type fakeEventRepo struct {
 	events      map[string]*domain.Event
 	ticketTypes map[string]*domain.TicketType
 	unitCounts  map[string]int // ticketTypeID → provisioned count
+	soldCounts  map[string]int // ticketTypeID → sold count (non-AVAILABLE)
 }
 
 func newFakeEventRepo() *fakeEventRepo {
@@ -17,6 +19,7 @@ func newFakeEventRepo() *fakeEventRepo {
 		events:      make(map[string]*domain.Event),
 		ticketTypes: make(map[string]*domain.TicketType),
 		unitCounts:  make(map[string]int),
+		soldCounts:  make(map[string]int),
 	}
 }
 
@@ -24,14 +27,6 @@ func (r *fakeEventRepo) CreateEvent(_ context.Context, e *domain.Event) error {
 	e.ID = "event-" + e.Name
 	r.events[e.ID] = e
 	return nil
-}
-
-func (r *fakeEventRepo) ListEvents(_ context.Context) ([]*domain.Event, error) {
-	result := make([]*domain.Event, 0, len(r.events))
-	for _, e := range r.events {
-		result = append(result, e)
-	}
-	return result, nil
 }
 
 func (r *fakeEventRepo) GetEvent(_ context.Context, id string) (*domain.Event, error) {
@@ -42,8 +37,36 @@ func (r *fakeEventRepo) GetEvent(_ context.Context, id string) (*domain.Event, e
 	return e, nil
 }
 
+func (r *fakeEventRepo) ListEvents(_ context.Context, _ application.ListEventsFilter) ([]*domain.Event, error) {
+	result := make([]*domain.Event, 0, len(r.events))
+	for _, e := range r.events {
+		result = append(result, e)
+	}
+	return result, nil
+}
+
+func (r *fakeEventRepo) UpdateEvent(_ context.Context, e *domain.Event) error {
+	r.events[e.ID] = e
+	return nil
+}
+
+func (r *fakeEventRepo) DeleteEvent(_ context.Context, eventID string) error {
+	delete(r.events, eventID)
+	return nil
+}
+
+func (r *fakeEventRepo) HasNonAvailableUnits(_ context.Context, eventID string) (bool, error) {
+	for _, tt := range r.ticketTypes {
+		if tt.EventID == eventID && r.soldCounts[tt.ID] > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *fakeEventRepo) CreateTicketType(_ context.Context, tt *domain.TicketType) error {
 	tt.ID = "tt-" + tt.Name
+	tt.PriceStatus = "OPEN"
 	r.ticketTypes[tt.ID] = tt
 	return nil
 }
@@ -66,6 +89,16 @@ func (r *fakeEventRepo) GetTicketType(_ context.Context, id string) (*domain.Tic
 	return tt, nil
 }
 
+func (r *fakeEventRepo) UpdateTicketType(_ context.Context, tt *domain.TicketType) error {
+	r.ticketTypes[tt.ID] = tt
+	return nil
+}
+
+func (r *fakeEventRepo) DeleteTicketType(_ context.Context, ticketTypeID string) error {
+	delete(r.ticketTypes, ticketTypeID)
+	return nil
+}
+
 func (r *fakeEventRepo) ProvisionUnits(_ context.Context, ticketTypeID string, quantity int) error {
 	r.unitCounts[ticketTypeID] += quantity
 	return nil
@@ -73,6 +106,10 @@ func (r *fakeEventRepo) ProvisionUnits(_ context.Context, ticketTypeID string, q
 
 func (r *fakeEventRepo) CountProvisionedUnits(_ context.Context, ticketTypeID string) (int, error) {
 	return r.unitCounts[ticketTypeID], nil
+}
+
+func (r *fakeEventRepo) CountSoldUnits(_ context.Context, ticketTypeID string) (int, error) {
+	return r.soldCounts[ticketTypeID], nil
 }
 
 func (r *fakeEventRepo) UpdateEventImageURL(_ context.Context, eventID, imageURL string) error {
