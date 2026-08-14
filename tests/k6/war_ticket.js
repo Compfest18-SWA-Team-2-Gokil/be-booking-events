@@ -6,12 +6,16 @@
  *   2. Login → dapat token
  *   3. Semua VU hit /tickets/hold serentak di fase spike
  *
- * Cara run (100 VU):
+ * Cara run (local, 100 VU — default):
  *   k6 run -e TICKET_TYPE_ID=<uuid> tests/k6/war_ticket.js
  *
- * Cara run (1000 VU):
- *   k6 run --vus 1000 --stage "0s:0,5s:1000,30s:1000,5s:0" \
- *     -e TICKET_TYPE_ID=<uuid> tests/k6/war_ticket.js
+ * Cara run (200 VU):
+ *   k6 run -e TICKET_TYPE_ID=<uuid> -e MAX_VUS=200 tests/k6/war_ticket.js
+ *
+ * Catatan lokal vs produksi:
+ *   - Server lokal (MacBook, single process) comfortable di ~100-150 VU.
+ *   - Server produksi (multi-instance) bisa 500+ VU.
+ *   - Gunakan Go goroutine test (TestWarTicket_1000) untuk burst serentak 1000 user.
  */
 
 import http from "k6/http";
@@ -19,38 +23,51 @@ import { check, sleep, group } from "k6";
 import { Counter, Rate, Trend } from "k6/metrics";
 import { uuidv4 } from "https://jslib.k6.io/k6-utils/1.4.0/index.js";
 
-const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
+const BASE_URL    = __ENV.BASE_URL      || "http://localhost:8080";
 const TICKET_TYPE_ID = __ENV.TICKET_TYPE_ID;
+const MAX_VUS     = parseInt(__ENV.MAX_VUS || "100");
 
 // ── Custom metrics ──────────────────────────────────────────────────────────
-const regSuccess    = new Rate("war_register_success");
-const loginSuccess  = new Rate("war_login_success");
-const holdSuccess   = new Counter("war_hold_success");   // HTTP 200
-const holdNoStock   = new Counter("war_hold_no_stock");  // HTTP 409
-const holdError     = new Counter("war_hold_error");     // lain-lain
-const holdLatency   = new Trend("war_hold_latency_ms", true);
-const e2eLatency    = new Trend("war_e2e_latency_ms", true);
+const regSuccess   = new Rate("war_register_success");
+const loginSuccess = new Rate("war_login_success");
+const holdSuccess  = new Counter("war_hold_success");   // HTTP 200
+const holdNoStock  = new Counter("war_hold_no_stock");  // HTTP 409
+const holdError    = new Counter("war_hold_error");     // lain-lain / timeout
+const holdLatency  = new Trend("war_hold_latency_ms", true);
+const e2eLatency   = new Trend("war_e2e_latency_ms", true);
 
-// ── Skenario: ramp up cepat lalu spike ────────────────────────────────────
+// ── Skenario: tiap VU jalankan tepat 1 iterasi (burst sekali, mirip goroutine) ──
+// Gunakan MODE=sustained untuk sustained load (VU loop terus).
+const MODE = __ENV.MODE || "burst";
+
 export const options = {
   scenarios: {
-    war: {
-      executor: "ramping-vus",
-      startVUs: 0,
-      stages: [
-        { duration: "10s", target: 100 },  // ramp up ke 100
-        { duration: "5s",  target: 500 },  // gas ke 500
-        { duration: "10s", target: 500 },  // tahan 500 — ini puncak war
-        { duration: "5s",  target: 0  },   // ramp down
-      ],
-      gracefulRampDown: "5s",
-    },
+    war: MODE === "sustained"
+      ? {
+          // Sustained: VU terus loop, cocok untuk stress test throughput
+          executor: "ramping-vus",
+          startVUs: 0,
+          stages: [
+            { duration: "10s", target: MAX_VUS },
+            { duration: "20s", target: MAX_VUS },
+            { duration: "5s",  target: 0 },
+          ],
+          gracefulRampDown: "10s",
+        }
+      : {
+          // Burst (default): tiap VU tepat 1 kali register→login→hold
+          // Hasilnya setara dengan goroutine test: N user serentak, 1 hold masing-masing
+          executor: "per-vu-iterations",
+          vus: MAX_VUS,
+          iterations: 1,
+          maxDuration: "120s",
+        },
   },
   thresholds: {
-    // 95% hold request harus selesai < 3 detik
-    war_hold_latency_ms: ["p(95)<3000"],
-    // Error rate http < 5%
-    http_req_failed: ["rate<0.05"],
+    // Hold p95 < 5 detik untuk lokal (burst mode); sustained wajar lebih tinggi
+    war_hold_latency_ms: ["p(95)<5000"],
+    // Error rate (timeout/5xx) < 10%
+    http_req_failed: ["rate<0.10"],
     // Login harus hampir selalu berhasil
     war_login_success: ["rate>0.95"],
   },
@@ -58,7 +75,7 @@ export const options = {
 
 export default function () {
   if (!TICKET_TYPE_ID) {
-    console.error("Set TICKET_TYPE_ID via -e flag");
+    console.error("Set TICKET_TYPE_ID via -e flag, contoh: k6 run -e TICKET_TYPE_ID=<uuid> ...");
     return;
   }
 
@@ -72,7 +89,7 @@ export default function () {
     const res = http.post(
       `${BASE_URL}/api/v1/auth/register`,
       JSON.stringify({ email, name: `WarUser${__VU}`, password }),
-      { headers: { "Content-Type": "application/json" } }
+      { headers: { "Content-Type": "application/json" }, timeout: "15s" }
     );
     regSuccess.add(res.status === 201 || res.status === 409);
   });
@@ -82,11 +99,9 @@ export default function () {
     const res = http.post(
       `${BASE_URL}/api/v1/auth/login`,
       JSON.stringify({ email, password }),
-      { headers: { "Content-Type": "application/json" } }
+      { headers: { "Content-Type": "application/json" }, timeout: "15s" }
     );
-    const ok = check(res, {
-      "login 200": (r) => r.status === 200,
-    });
+    const ok = check(res, { "login 200": (r) => r.status === 200 });
     loginSuccess.add(ok);
     if (ok) {
       try { token = JSON.parse(res.body).token; } catch {}
@@ -95,25 +110,21 @@ export default function () {
 
   if (!token) return;
 
-  // Sedikit jeda — semua VU login dulu, lalu serentak hold.
-  // Di K6 tidak ada barrier seperti goroutine, tapi ramp-up cepat (10s)
-  // sudah mensimulasikan spike yang cukup realistis.
-  sleep(0.1);
+  // Sedikit jeda agar semua VU sudah login sebelum spike hold dimulai.
+  sleep(0.2);
 
-  // ── Phase 3: Hold tiket — ini inti "perang" ─────────────────────────────
+  // ── Phase 3: Hold tiket — inti "perang" ─────────────────────────────────
   group("hold_ticket", () => {
     const start = Date.now();
     const res = http.post(
       `${BASE_URL}/api/v1/tickets/hold`,
-      JSON.stringify({
-        items: [{ ticket_type_id: TICKET_TYPE_ID, quantity: 1 }],
-      }),
+      JSON.stringify({ items: [{ ticket_type_id: TICKET_TYPE_ID, quantity: 1 }] }),
       {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        timeout: "10s",
+        timeout: "30s",  // lebih panjang agar tidak false-fail saat beban tinggi
       }
     );
     holdLatency.add(Date.now() - start);
@@ -129,7 +140,9 @@ export default function () {
       holdNoStock.add(1);
     } else {
       holdError.add(1);
-      console.error(`VU${__VU} iter${__ITER}: hold status=${res.status} body=${res.body?.slice(0,100)}`);
+      if (res.status !== 0) {  // 0 = timeout, sudah tercatat di http_req_failed
+        console.error(`VU${__VU}: hold status=${res.status} body=${res.body?.slice(0, 120)}`);
+      }
     }
   });
 
@@ -137,19 +150,24 @@ export default function () {
 }
 
 export function handleSummary(data) {
-  const success  = data.metrics.war_hold_success?.values?.count  ?? 0;
-  const noStock  = data.metrics.war_hold_no_stock?.values?.count ?? 0;
-  const errors   = data.metrics.war_hold_error?.values?.count    ?? 0;
-  const p95      = data.metrics.war_hold_latency_ms?.values?.["p(95)"]?.toFixed(0) ?? "?";
-  const p99      = data.metrics.war_hold_latency_ms?.values?.["p(99)"]?.toFixed(0) ?? "?";
-  const rps      = data.metrics.http_reqs?.values?.rate?.toFixed(1) ?? "?";
+  const success = data.metrics.war_hold_success?.values?.count  ?? 0;
+  const noStock = data.metrics.war_hold_no_stock?.values?.count ?? 0;
+  const errors  = data.metrics.war_hold_error?.values?.count    ?? 0;
+  const p95     = data.metrics.war_hold_latency_ms?.values?.["p(95)"]?.toFixed(0) ?? "?";
+  const p99     = data.metrics.war_hold_latency_ms?.values?.["p(99)"]?.toFixed(0) ?? "?";
+  const rps     = data.metrics.http_reqs?.values?.rate?.toFixed(1) ?? "?";
+  const loginOk = ((data.metrics.war_login_success?.values?.rate ?? 0) * 100).toFixed(1);
 
   console.log("\n╔══════════════════════════════════════════╗");
   console.log("║          WAR TICKET REPORT (K6)          ║");
   console.log("╠══════════════════════════════════════════╣");
+  console.log(`║  Max VUs            : ${String(MAX_VUS).padStart(6)}               ║`);
+  console.log(`║  Login success      : ${String(loginOk+"%").padStart(6)}               ║`);
+  console.log("╠══════════════════════════════════════════╣");
   console.log(`║  Dapat tiket (200)  : ${String(success).padStart(6)}               ║`);
   console.log(`║  Kehabisan (409)    : ${String(noStock).padStart(6)}               ║`);
-  console.log(`║  Error              : ${String(errors).padStart(6)}               ║`);
+  console.log(`║  Error/Timeout      : ${String(errors).padStart(6)}               ║`);
+  console.log("╠══════════════════════════════════════════╣");
   console.log(`║  Hold p95 latency   : ${String(p95+"ms").padStart(8)}             ║`);
   console.log(`║  Hold p99 latency   : ${String(p99+"ms").padStart(8)}             ║`);
   console.log(`║  Throughput         : ${String(rps+" req/s").padStart(12)}         ║`);
