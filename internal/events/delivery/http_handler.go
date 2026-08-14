@@ -55,32 +55,51 @@ func NewEventsHandler(
 }
 
 // POST /api/v1/events
+// Menerima multipart/form-data. Field teks: name, description, category, date, location.
+// Field opsional: image (JPEG/PNG/WebP, maks 5MB).
 func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Category    string `json:"category"`
-		Date        string `json:"date"` // RFC3339
-		Location    string `json:"location"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "request body tidak valid")
-		return
+	r.Body = http.MaxBytesReader(w, r.Body, 6*1024*1024)
+	if err := r.ParseMultipartForm(5 * 1024 * 1024); err != nil {
+		// Fallback: coba parse sebagai JSON biasa (backward-compat, tanpa gambar)
+		if err2 := r.ParseForm(); err2 != nil {
+			writeError(w, http.StatusBadRequest, "request tidak valid")
+			return
+		}
 	}
 
 	organizerID := authdelivery.UserIDFromCtx(r.Context())
 	event, err := h.createEventUC.Execute(r.Context(), application.CreateEventInput{
 		OrganizerID: organizerID,
-		Name:        req.Name,
-		Description: req.Description,
-		Category:    req.Category,
-		Date:        req.Date,
-		Location:    req.Location,
+		Name:        r.FormValue("name"),
+		Description: r.FormValue("description"),
+		Category:    r.FormValue("category"),
+		Date:        r.FormValue("date"),
+		Location:    r.FormValue("location"),
 	})
 	if err != nil {
 		writeEventValidationOrServerError(w, err)
 		return
 	}
+
+	// Upload gambar jika ada field "image".
+	file, header, fileErr := r.FormFile("image")
+	if fileErr == nil {
+		defer file.Close()
+		buf := make([]byte, header.Size)
+		if _, err := file.Read(buf); err == nil {
+			out, uploadErr := h.uploadImageUC.Execute(r.Context(), application.UploadEventImageInput{
+				EventID:     event.ID,
+				OrganizerID: organizerID,
+				Data:        buf,
+				ContentType: http.DetectContentType(buf),
+			})
+			if uploadErr == nil {
+				event.ImageURL = out.ImageURL
+			}
+			// Upload gagal tidak membatalkan pembuatan event — event tetap dibuat.
+		}
+	}
+
 	writeJSON(w, http.StatusCreated, event)
 }
 

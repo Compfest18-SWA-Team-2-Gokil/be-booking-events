@@ -302,33 +302,49 @@ paths:
   /api/v1/events:
     post:
       tags: [Events]
-      summary: Buat event baru
-      description: Hanya ORGANIZER. OrganizerID otomatis dari JWT.
+      summary: Buat event baru (dengan opsional upload gambar)
+      description: |
+        Hanya ORGANIZER. OrganizerID otomatis dari JWT.
+
+        Request menggunakan `multipart/form-data`. Field teks dikirim sebagai form fields,
+        gambar dikirim sebagai file field `image` (opsional, JPEG/PNG/WebP, maks 5MB).
+
+        Jika `image` disertakan, gambar langsung terupload dan `image_url` akan ada di response.
+        Jika upload gambar gagal, event tetap berhasil dibuat (tanpa `image_url`).
+        Untuk update gambar setelah event dibuat, gunakan `POST /api/v1/events/{eventID}/image`.
       security:
         - BearerAuth: []
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
               required: [name, date, location]
               properties:
                 name:
                   type: string
+                  description: Nama event
+                description:
+                  type: string
+                  description: Deskripsi event (opsional)
+                category:
+                  type: string
+                  description: "Kategori event (opsional, misal: MUSIC, SPORT, TECH)"
                 date:
                   type: string
                   format: date-time
                   description: RFC3339, harus di masa depan
                 location:
                   type: string
-            example:
-              name: "Konser Jakarta 2027"
-              date: "2027-06-15T19:00:00+07:00"
-              location: "GBK Jakarta"
+                  description: Lokasi event
+                image:
+                  type: string
+                  format: binary
+                  description: Gambar event (opsional, JPEG/PNG/WebP, maks 5MB)
       responses:
         "201":
-          description: Event berhasil dibuat
+          description: Event berhasil dibuat. `image_url` ada jika gambar berhasil diupload.
           content:
             application/json:
               schema:
