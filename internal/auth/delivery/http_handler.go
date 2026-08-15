@@ -1,21 +1,26 @@
 package delivery
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/ebk-tech/be-booking-events/internal/appconfig"
 	"github.com/ebk-tech/be-booking-events/internal/auth/application"
 	"github.com/ebk-tech/be-booking-events/internal/auth/domain"
 	"github.com/go-chi/chi/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type AuthHandler struct {
-	registerUC       *application.RegisterUseCase
-	loginUC          *application.LoginUseCase
-	assignGateOpUC   *application.AssignGateOperatorUseCase
-	userRepo         application.UserRepository
+	registerUC     *application.RegisterUseCase
+	loginUC        *application.LoginUseCase
+	assignGateOpUC *application.AssignGateOperatorUseCase
+	userRepo       application.UserRepository
+	redis          *redis.Client
 }
 
 func NewAuthHandler(
@@ -23,12 +28,14 @@ func NewAuthHandler(
 	loginUC *application.LoginUseCase,
 	assignGateOpUC *application.AssignGateOperatorUseCase,
 	userRepo application.UserRepository,
+	redisClient *redis.Client,
 ) *AuthHandler {
 	return &AuthHandler{
 		registerUC:     registerUC,
 		loginUC:        loginUC,
 		assignGateOpUC: assignGateOpUC,
 		userRepo:       userRepo,
+		redis:          redisClient,
 	}
 }
 
@@ -128,6 +135,20 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userResponse{
 		ID: user.ID, Email: user.Email, Name: user.Name, Role: string(user.Role),
 	})
+}
+
+// POST /api/v1/auth/logout — invalidasi token via Redis blocklist (TTL = 25 jam)
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	raw := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(raw, "Bearer ")
+	if token == "" {
+		writeError(w, http.StatusBadRequest, "Authorization header wajib diisi")
+		return
+	}
+	// Simpan token ke blocklist Redis selama 25 jam (lebih dari TTL JWT 24 jam).
+	key := "jwt_blocklist:" + token
+	h.redis.Set(context.Background(), key, "1", 25*time.Hour)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
 // POST /api/v1/events/{eventID}/gate-operators  (requires ORGANIZER)

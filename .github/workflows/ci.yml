@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: booking_events_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests (no DB required)
+        run: |
+          go test ./internal/inventory/domain/... ./internal/inventory/application/... \
+                  ./internal/auth/domain/... ./internal/auth/application/... \
+                  -count=1 -v
+
+      - name: Integration tests (requires Postgres)
+        env:
+          TEST_DATABASE_URL: postgres://dev:dev@localhost:5433/booking_events_test
+        run: go test ./internal/inventory/infrastructure/... -count=1 -v -timeout 60s

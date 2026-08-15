@@ -157,6 +157,8 @@ func (h *OrdersHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "order tidak ditemukan")
 		case errors.Is(err, domain.ErrOrderNotPaid):
 			writeError(w, http.StatusBadRequest, "hanya order yang sudah dibayar bisa direfund")
+		case errors.Is(err, domain.ErrTicketAlreadyAdmitted):
+			writeError(w, http.StatusConflict, err.Error())
 		default:
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}

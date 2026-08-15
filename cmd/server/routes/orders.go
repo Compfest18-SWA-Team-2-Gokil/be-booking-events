@@ -12,8 +12,8 @@ func registerOrders(r chi.Router, d Deps) {
 	r.Group(func(r chi.Router) {
 		r.Use(d.AuthMiddleware)
 
-		// BUYER: buat order + inisiasi bayar dilindungi idempotency key
-		r.With(d.RequireBuyer, d.Idempotency).Post("/api/v1/orders", d.Orders.CreateOrder)
+		// BUYER: buat order dilindungi queue guard + idempotency
+		r.With(d.RequireBuyer, d.QueueGuard, d.Idempotency).Post("/api/v1/orders", d.Orders.CreateOrder)
 		r.With(d.RequireBuyer).Get("/api/v1/orders/{orderID}", d.Orders.GetOrder)
 		r.With(d.RequireBuyer, d.Idempotency).Post("/api/v1/orders/{orderID}/pay", d.Orders.InitiatePayment)
 		r.With(d.RequireBuyer).Post("/api/v1/orders/{orderID}/refund", d.Orders.RequestRefund)
