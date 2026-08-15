@@ -43,4 +43,5 @@ func Register(r chi.Router, d Deps) {
 	registerCheckin(r, d)
 	registerQueue(r, d)
 	registerOrders(r, d)
+	registerDebug(r, d)
 }

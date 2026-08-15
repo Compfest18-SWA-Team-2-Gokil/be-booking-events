@@ -10,18 +10,27 @@ import (
 	"github.com/ebk-tech/be-booking-events/internal/orders/application"
 )
 
-const xenditBaseURL = "https://api.xendit.co"
+const defaultXenditBaseURL = "https://api.xendit.co"
 
 type XenditPaymentProvider struct {
 	secretKey  string
+	baseURL    string
 	httpClient *http.Client
 }
 
 func NewXenditPaymentProvider(secretKey string) *XenditPaymentProvider {
 	return &XenditPaymentProvider{
 		secretKey:  secretKey,
+		baseURL:    defaultXenditBaseURL,
 		httpClient: &http.Client{},
 	}
+}
+
+func (p *XenditPaymentProvider) getBaseURL() string {
+	if p.baseURL != "" {
+		return p.baseURL
+	}
+	return defaultXenditBaseURL
 }
 
 var _ application.PaymentProvider = (*XenditPaymentProvider)(nil)
@@ -33,11 +42,11 @@ func (p *XenditPaymentProvider) CreateInvoice(ctx context.Context, input applica
 		"payer_email":  input.PayerEmail,
 		"description":  input.Description,
 		"currency":     "IDR",
-		"invoice_duration": 3600, // 1 jam
+		"invoice_duration": 3600, 
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		xenditBaseURL+"/v2/invoices", bytes.NewReader(body))
+		p.getBaseURL()+"/v2/invoices", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +91,7 @@ func (p *XenditPaymentProvider) RefundPayment(ctx context.Context, invoiceID str
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		xenditBaseURL+"/refunds", bytes.NewReader(body))
+		p.getBaseURL()+"/refunds", bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}

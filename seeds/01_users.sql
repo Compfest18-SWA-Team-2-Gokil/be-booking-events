@@ -30,7 +30,8 @@ INSERT INTO users (id, email, name, role, password_hash) VALUES
     'Gate Operator Compfest',
     'GATE_OPERATOR',
     '$2a$10$1JH5QPVXuPlnwr565gMeReXFnfUJjDb/oDaylX4bQnbXuS3JxWjPy'
-
+  ),
+  (
     'aaaaaaaa-0000-0000-0000-000000000005',
     'admin@compfest.id',
     'Admin Compfest',
