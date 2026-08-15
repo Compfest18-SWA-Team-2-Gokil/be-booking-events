@@ -20,6 +20,9 @@ func registerOrders(r chi.Router, d Deps) {
 
 		// ORGANIZER: approve refund
 		r.With(d.RequireOrganizer).Post("/api/v1/orders/{orderID}/refund/approve", d.Orders.ApproveRefund)
+
+		// Respon Webhook
+		
 	})
 }
 
