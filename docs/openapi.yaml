@@ -10,6 +10,7 @@ servers:
 
 tags:
   - name: Auth
+  - name: Admin
   - name: Events
   - name: Inventory
   - name: Dashboard
@@ -62,7 +63,7 @@ components:
           format: uuid
         status:
           type: string
-          enum: [PENDING, PAYMENT_PENDING, PAID, CANCELLED, REFUND_REQUESTED, REFUNDED]
+          enum: [PENDING, PAYMENT_PENDING, PAID, CANCELLED, REFUND_REQUESTED, REFUNDED, PAYMENT_DISCREPANCY]
         total_amount:
           type: integer
           description: Total harga dalam rupiah
@@ -141,6 +142,33 @@ components:
           enum: [GA, SEATED]
         total_quota:
           type: integer
+
+    DisputeOrder:
+      type: object
+      description: Order dalam status anomali (PAYMENT_DISCREPANCY atau REFUND_REQUESTED)
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_id:
+          type: string
+          format: uuid
+        buyer_email:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PAYMENT_DISCREPANCY, REFUND_REQUESTED]
+        total_amount:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     TicketTypeMetrics:
       type: object
@@ -254,6 +282,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout — invalidasi JWT token
+      description: |
+        Menambahkan token ke Redis blocklist dengan TTL 25 jam.
+        Setelah logout, token yang sama akan ditolak 401 oleh AuthMiddleware.
+        Requires JWT (Bearer token) di header.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Logout berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: logged_out
+        "400":
+          description: Authorization header tidak ada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Token tidak valid
           content:
@@ -883,6 +945,102 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  # ── ADMIN ─────────────────────────────────────────────────────────────────
+  /api/v1/admin/disputes:
+    get:
+      tags: [Admin]
+      summary: Daftar order dalam status anomali
+      description: |
+        Mengembalikan semua order berstatus `PAYMENT_DISCREPANCY` atau `REFUND_REQUESTED`.
+        `PAYMENT_DISCREPANCY` terjadi saat pembayaran diterima tapi kursi sudah direbut order lain.
+        Hanya ADMIN.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar dispute orders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disputes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DisputeOrder"
+        "403":
+          description: Bukan ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/orders/{orderID}/override:
+    post:
+      tags: [Admin]
+      summary: Override status order secara manual
+      description: |
+        Admin dapat memaksa status order ke `PAID`, `CANCELLED`, atau `REFUNDED`.
+        Setiap override wajib menyertakan `reason` dan dicatat di `audit_logs`
+        dalam satu transaksi database (tidak bisa dihapus/diubah).
+        Hanya ADMIN.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/orderID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status:
+                  type: string
+                  enum: [PAID, CANCELLED, REFUNDED]
+                  description: Status tujuan (hanya 3 nilai yang diizinkan)
+                reason:
+                  type: string
+                  description: Alasan override — wajib diisi untuk audit trail
+            example:
+              status: "REFUNDED"
+              reason: "Customer complaint #1234 — kursi tidak tersedia saat event"
+      responses:
+        "200":
+          description: Override berhasil, tercatat di audit log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  order_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  message:
+                    type: string
+                    example: order berhasil di-override dan tercatat di audit log
+        "400":
+          description: Status tidak valid atau reason kosong
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Order tidak ditemukan atau gagal update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   # ── ORDERS ────────────────────────────────────────────────────────────────
   /api/v1/orders:
     post:
@@ -1044,6 +1202,8 @@ paths:
       description: |
         Buyer mengajukan permintaan refund. Status order menjadi `REFUND_REQUESTED`.
         Refund baru diproses setelah ORGANIZER approve.
+
+        **Diblokir** jika minimal 1 tiket dalam order sudah di-scan masuk gerbang (status `ADMITTED`).
       security:
         - BearerAuth: []
       parameters:
@@ -1061,6 +1221,12 @@ paths:
                     example: refund_requested
         "400":
           description: Order belum berstatus PAID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Tiket sudah dipakai masuk gerbang, refund tidak bisa diajukan
           content:
             application/json:
               schema:
