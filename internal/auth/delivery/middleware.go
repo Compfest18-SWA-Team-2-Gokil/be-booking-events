@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ebk-tech/be-booking-events/internal/auth/application"
+	"github.com/redis/go-redis/v9"
 )
 
 type contextKey string
@@ -28,8 +29,8 @@ func RoleFromCtx(ctx context.Context) string {
 }
 
 // AuthMiddleware memvalidasi JWT dari header Authorization: Bearer <token>.
-// Jika valid, set user_id dan role ke dalam context.
-func AuthMiddleware(tokenProvider application.TokenProvider) func(http.Handler) http.Handler {
+// Jika valid, cek Redis blocklist (logout), lalu set user_id dan role ke context.
+func AuthMiddleware(tokenProvider application.TokenProvider, redisClient *redis.Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -42,6 +43,13 @@ func AuthMiddleware(tokenProvider application.TokenProvider) func(http.Handler) 
 			userID, role, err := tokenProvider.Verify(tokenStr)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "token tidak valid atau sudah kadaluarsa")
+				return
+			}
+
+			// Cek apakah token sudah di-logout (ada di Redis blocklist).
+			blocklisted, _ := redisClient.Exists(r.Context(), "jwt_blocklist:"+tokenStr).Result()
+			if blocklisted > 0 {
+				writeError(w, http.StatusUnauthorized, "token sudah tidak valid, silakan login kembali")
 				return
 			}
 

@@ -6,12 +6,13 @@ type OrderStatus string
 type PaymentStatus string
 
 const (
-	OrderStatusPending         OrderStatus = "PENDING"
-	OrderStatusPaymentPending  OrderStatus = "PAYMENT_PENDING"
-	OrderStatusPaid            OrderStatus = "PAID"
-	OrderStatusCancelled       OrderStatus = "CANCELLED"
-	OrderStatusRefundRequested OrderStatus = "REFUND_REQUESTED"
-	OrderStatusRefunded        OrderStatus = "REFUNDED"
+	OrderStatusPending              OrderStatus = "PENDING"
+	OrderStatusPaymentPending       OrderStatus = "PAYMENT_PENDING"
+	OrderStatusPaid                 OrderStatus = "PAID"
+	OrderStatusCancelled            OrderStatus = "CANCELLED"
+	OrderStatusRefundRequested      OrderStatus = "REFUND_REQUESTED"
+	OrderStatusRefunded             OrderStatus = "REFUNDED"
+	OrderStatusPaymentDiscrepancy   OrderStatus = "PAYMENT_DISCREPANCY"
 
 	PaymentStatusPending  PaymentStatus = "PENDING"
 	PaymentStatusSuccess  PaymentStatus = "SUCCESS"

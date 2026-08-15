@@ -14,6 +14,11 @@ type OrderRepository interface {
 	GetOrder(ctx context.Context, orderID string) (*domain.Order, error)
 	UpdateOrderStatus(ctx context.Context, orderID string, status domain.OrderStatus) error
 
+	// ConfirmOrderPayment konfirmasi pembayaran atomik; return ErrLostSeat jika tiket sudah direbut.
+	ConfirmOrderPayment(ctx context.Context, orderID string) error
+	// HasAdmittedUnits true jika minimal 1 tiket sudah di-scan gerbang (blokir refund).
+	HasAdmittedUnits(ctx context.Context, orderID string) (bool, error)
+
 	CreatePayment(ctx context.Context, p *domain.Payment) error
 	GetPaymentByOrderID(ctx context.Context, orderID string) (*domain.Payment, error)
 	UpdatePayment(ctx context.Context, p *domain.Payment) error

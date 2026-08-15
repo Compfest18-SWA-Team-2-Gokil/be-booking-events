@@ -93,6 +93,58 @@ func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) 
 	return o, nil
 }
 
+// ConfirmOrderPayment atomik: update ticket_units HELD→CONFIRMED dan order→PAID.
+// Jika 0 unit ter-update (tiket sudah direbut), order diset PAYMENT_DISCREPANCY dan return ErrLostSeat.
+func (r *PostgresOrderRepository) ConfirmOrderPayment(ctx context.Context, orderID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE ticket_units SET status = 'CONFIRMED', updated_at = NOW()
+		WHERE order_id = $1 AND status = 'HELD'
+	`, orderID)
+	if err != nil {
+		return fmt.Errorf("confirm units: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		// Tiket sudah direbut — tandai sebagai discrepancy, jangan set PAID.
+		_, err = tx.Exec(ctx, `
+			UPDATE orders SET status = 'PAYMENT_DISCREPANCY', updated_at = NOW() WHERE id = $1
+		`, orderID)
+		if err != nil {
+			return fmt.Errorf("set discrepancy: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		return domain.ErrLostSeat
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE orders SET status = 'PAID', updated_at = NOW() WHERE id = $1
+	`, orderID)
+	if err != nil {
+		return fmt.Errorf("set paid: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// HasAdmittedUnits mengembalikan true jika ada tiket dalam order yang sudah di-scan gerbang.
+func (r *PostgresOrderRepository) HasAdmittedUnits(ctx context.Context, orderID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM ticket_units WHERE order_id = $1 AND status = 'ADMITTED'
+		)
+	`, orderID).Scan(&exists)
+	return exists, err
+}
+
 // UpdateOrderStatus juga update ticket_units status jika order berpindah ke PAID atau REFUNDED.
 func (r *PostgresOrderRepository) UpdateOrderStatus(ctx context.Context, orderID string, status domain.OrderStatus) error {
 	tx, err := r.pool.Begin(ctx)

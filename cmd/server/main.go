@@ -6,8 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
+	adminapp "github.com/ebk-tech/be-booking-events/internal/admin/application"
+	admindelivery "github.com/ebk-tech/be-booking-events/internal/admin/delivery"
+	admininfra "github.com/ebk-tech/be-booking-events/internal/admin/infrastructure"
 	authapp "github.com/ebk-tech/be-booking-events/internal/auth/application"
 	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
 	authinfra "github.com/ebk-tech/be-booking-events/internal/auth/infrastructure"
@@ -20,10 +24,11 @@ import (
 	eventsapp "github.com/ebk-tech/be-booking-events/internal/events/application"
 	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
 	eventsinfra "github.com/ebk-tech/be-booking-events/internal/events/infrastructure"
-	"strconv"
 	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
 	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
 	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
+	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
+	"github.com/ebk-tech/be-booking-events/internal/migration"
 	ordersapp "github.com/ebk-tech/be-booking-events/internal/orders/application"
 	ordersdelivery "github.com/ebk-tech/be-booking-events/internal/orders/delivery"
 	ordersinfra "github.com/ebk-tech/be-booking-events/internal/orders/infrastructure"
@@ -31,8 +36,6 @@ import (
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
 	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
-	"github.com/ebk-tech/be-booking-events/internal/migration"
-	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -86,7 +89,7 @@ func main() {
 		slog.Error("failed to acquire db connection for migration", "err", err)
 		os.Exit(1)
 	}
-	
+
 	if err := migration.EnsureLogTable(ctx, dbConn.Conn()); err != nil {
 		slog.Error("failed to ensure migration log table", "err", err)
 		dbConn.Release()
@@ -115,8 +118,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- Main page + health check
-	
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
 	passwordHasher := authinfra.NewBcryptPasswordHasher()
@@ -124,7 +125,13 @@ func main() {
 	registerUC := authapp.NewRegisterUseCase(userRepo, passwordHasher)
 	loginUC := authapp.NewLoginUseCase(userRepo, passwordHasher, tokenProvider)
 	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo)
-	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, userRepo)
+	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, userRepo, redisClient)
+
+	// --- Admin module ---
+	adminRepo := admininfra.NewPostgresAdminRepository(pool)
+	listDisputesUC := adminapp.NewListDisputesUseCase(adminRepo)
+	overrideOrderUC := adminapp.NewOverrideOrderUseCase(adminRepo)
+	adminHandler := admindelivery.NewAdminHandler(listDisputesUC, overrideOrderUC)
 
 	// --- Inventory module ---
 	ticketRepo := inventoryinfra.NewPostgresTicketRepository(pool)
@@ -161,7 +168,7 @@ func main() {
 	xenditProvider := ordersinfra.NewXenditPaymentProvider(xenditSecretKey)
 	createOrderUC := ordersapp.NewCreateOrderUseCase(orderRepo)
 	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(orderRepo, xenditProvider)
-	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo)
+	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo, xenditProvider)
 	requestRefundUC := ordersapp.NewRequestRefundUseCase(orderRepo)
 	approveRefundUC := ordersapp.NewApproveRefundUseCase(orderRepo, xenditProvider)
 	getOrderUC := ordersapp.NewGetOrderUseCase(orderRepo)
@@ -207,13 +214,16 @@ func main() {
 	r := chi.NewRouter()
 
 	routes.Register(r, routes.Deps{
-		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider),
+		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider, redisClient),
 		RequireBuyer:        authdelivery.RequireRole("BUYER"),
 		RequireOrganizer:    authdelivery.RequireRole("ORGANIZER"),
 		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
+		RequireAdmin:        authdelivery.RequireRole("ADMIN"),
 		Idempotency:         appmiddleware.Idempotency(redisClient),
+		QueueGuard:          appmiddleware.QueueTokenGuard(validateTokenUC),
 
 		Auth:      authHandler,
+		Admin:     adminHandler,
 		Inventory: inventoryHandler,
 		Dashboard: dashboardHandler,
 		Checkin:   checkinHandler,

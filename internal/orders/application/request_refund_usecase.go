@@ -28,5 +28,14 @@ func (uc *RequestRefundUseCase) Execute(ctx context.Context, orderID, buyerID st
 		return domain.ErrOrderNotPaid
 	}
 
+	// PRD-09 Status Blocker: tolak refund jika ada tiket yang sudah di-scan gerbang.
+	admitted, err := uc.repo.HasAdmittedUnits(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if admitted {
+		return domain.ErrTicketAlreadyAdmitted
+	}
+
 	return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusRefundRequested)
 }

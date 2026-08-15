@@ -2,19 +2,21 @@ package application
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
 )
 
 type ConfirmPaymentUseCase struct {
-	repo OrderRepository
+	repo     OrderRepository
+	provider PaymentProvider
 }
 
-func NewConfirmPaymentUseCase(repo OrderRepository) *ConfirmPaymentUseCase {
-	return &ConfirmPaymentUseCase{repo: repo}
+func NewConfirmPaymentUseCase(repo OrderRepository, provider PaymentProvider) *ConfirmPaymentUseCase {
+	return &ConfirmPaymentUseCase{repo: repo, provider: provider}
 }
 
-// ConfirmPaymentInput berisi data dari Xendit webhook payload.
 type ConfirmPaymentInput struct {
 	XenditInvoiceID string
 	ExternalID      string // == order ID kita
@@ -33,49 +35,53 @@ func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPayme
 		return err
 	}
 
-	// === PERUBAHAN BARU: Validasi Idempotensi & Pengaman Urutan Webhook ===
-	// Pengecekan dilakukan menggunakan helper method di bawah untuk menghindari override status final.
+	// Idempotency guard: skip webhook jika order sudah di status final.
 	if uc.shouldSkipStateTransition(order.Status, payment.Status, input.Status) {
 		return nil
 	}
-	// === AKHIR PERUBAHAN BARU ===
 
-	if input.Status == "PAID" {
-		payment.Status = domain.PaymentStatusSuccess
-		payment.PaymentMethod = input.PaymentMethod
+	if input.Status != "PAID" {
+		payment.Status = domain.PaymentStatusFailed
 		if err := uc.repo.UpdatePayment(ctx, payment); err != nil {
 			return err
 		}
-		// UpdateOrderStatus juga update ticket_units → CONFIRMED dalam satu tx
-		return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusPaid)
+		return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusCancelled)
 	}
 
-	// EXPIRED atau status lain → cancel
-	payment.Status = domain.PaymentStatusFailed
+	payment.Status = domain.PaymentStatusSuccess
+	payment.PaymentMethod = input.PaymentMethod
 	if err := uc.repo.UpdatePayment(ctx, payment); err != nil {
 		return err
 	}
-	return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusCancelled)
+
+	// ConfirmOrderPayment atomik: update ticket_units HELD→CONFIRMED, cek rows affected.
+	// Jika 0 rows (tiket sudah direbut), order diset PAYMENT_DISCREPANCY dan return ErrLostSeat.
+	if err := uc.repo.ConfirmOrderPayment(ctx, order.ID); err != nil {
+		if errors.Is(err, domain.ErrLostSeat) {
+			// Auto-refund: uang dikembalikan otomatis karena tiket tidak bisa dikonfirmasi.
+			refundID, refundErr := uc.provider.RefundPayment(ctx, payment.XenditInvoiceID, payment.Amount)
+			if refundErr == nil {
+				payment.Status = domain.PaymentStatusRefunded
+				payment.XenditRefundID = refundID
+				_ = uc.repo.UpdatePayment(ctx, payment)
+			}
+			return fmt.Errorf("lost seat: %w", err)
+		}
+		return err
+	}
+
+	return nil
 }
 
-// === PERUBAHAN BARU: Helper Method Di Tempat Paling Bawah ===
-// shouldSkipStateTransition memvalidasi apakah status transisi dari webhook aman diproses.
-// Ini mencegah status EXPIRED dari webhook membatalkan transaksi yang sudah sukses (PAID/REFUNDED).
-func (uc *ConfirmPaymentUseCase) shouldSkipStateTransition(orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, webhookStatus string) bool {
-	// Jika order sudah PAID, REFUND_REQUESTED, atau REFUNDED:
-	// - Baik webhook PAID (redundant) maupun EXPIRED (out-of-order) harus diabaikan demi konsistensi data.
-	if orderStatus == domain.OrderStatusPaid || 
-	   orderStatus == domain.OrderStatusRefundRequested || 
-	   orderStatus == domain.OrderStatusRefunded {
+// shouldSkipStateTransition mencegah webhook out-of-order membatalkan transaksi yang sudah sukses.
+func (uc *ConfirmPaymentUseCase) shouldSkipStateTransition(orderStatus domain.OrderStatus, _ domain.PaymentStatus, _ string) bool {
+	switch orderStatus {
+	case domain.OrderStatusPaid,
+		domain.OrderStatusRefundRequested,
+		domain.OrderStatusRefunded,
+		domain.OrderStatusCancelled,
+		domain.OrderStatusPaymentDiscrepancy:
 		return true
 	}
-
-	// Jika order sudah CANCELLED:
-	// - Abaikan semua event webhook lanjutan untuk order ini.
-	if orderStatus == domain.OrderStatusCancelled {
-		return true
-	}
-
 	return false
 }
-// === AKHIR PERUBAHAN BARU ===
