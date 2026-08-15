@@ -140,6 +140,13 @@ func (h *OrdersHandler) XenditWebhook(w http.ResponseWriter, r *http.Request) {
 		Status:          payload.Status,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrPaymentDiscrepancy) {
+			writeJSON(w, http.StatusOK, map[string]string{
+				"status":  "payment_discrepancy",
+				"message": "kursi kadaluarsa/direbut pembeli lain, order dialihkan ke auto-refund",
+			})
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "gagal konfirmasi pembayaran")
 		return
 	}
