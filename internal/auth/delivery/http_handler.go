@@ -130,6 +130,14 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// POST /api/v1/auth/logout (requires AuthMiddleware)
+func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Stateless JWT logout: konfirmasi pemutusan sesi klien
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "berhasil logout",
+	})
+}
+
 // POST /api/v1/events/{eventID}/gate-operators  (requires ORGANIZER)
 func (h *AuthHandler) AssignGateOperator(w http.ResponseWriter, r *http.Request) {
 	eventID := chi.URLParam(r, "eventID")

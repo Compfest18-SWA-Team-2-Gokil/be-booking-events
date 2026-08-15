@@ -44,9 +44,9 @@ export const options = {
     },
   },
   thresholds: {
-    // Semua request harus selesai < 2 detik
-    http_req_duration: ["p(95)<2000"],
-    // Error rate harus < 5% (selain 409 yang memang expected)
+    // 95% request harus selesai < 800ms sesuai target SLA PRD-00
+    http_req_duration: ["p(95)<800"],
+    // Error rate harus < 5% (selain 409 yang memang expected saat tiket habis)
     http_req_failed: ["rate<0.05"],
   },
 };

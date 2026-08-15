@@ -12,6 +12,7 @@ const (
 	OrderStatusCancelled       OrderStatus = "CANCELLED"
 	OrderStatusRefundRequested OrderStatus = "REFUND_REQUESTED"
 	OrderStatusRefunded        OrderStatus = "REFUNDED"
+	OrderStatusPaymentDiscrepancy OrderStatus = "PAYMENT_DISCREPANCY"
 
 	PaymentStatusPending  PaymentStatus = "PENDING"
 	PaymentStatusSuccess  PaymentStatus = "SUCCESS"

@@ -3,7 +3,6 @@ package delivery_test
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -24,6 +23,7 @@ type fakeOrderRepository struct {
 	orders   map[string]*domain.Order
 	payments map[string]*domain.Payment
 	emails   map[string]string
+	admitted map[string]bool
 }
 
 func newFakeOrderRepository() *fakeOrderRepository {
@@ -31,6 +31,7 @@ func newFakeOrderRepository() *fakeOrderRepository {
 		orders:   make(map[string]*domain.Order),
 		payments: make(map[string]*domain.Payment),
 		emails:   make(map[string]string),
+		admitted: make(map[string]bool),
 	}
 }
 
@@ -93,6 +94,10 @@ func (r *fakeOrderRepository) GetBuyerEmail(ctx context.Context, buyerID string)
 		return "", errors.New("buyer tidak ditemukan")
 	}
 	return email, nil
+}
+
+func (r *fakeOrderRepository) HasAdmittedUnits(ctx context.Context, orderID string) (bool, error) {
+	return r.admitted[orderID], nil
 }
 
 type fakePaymentProvider struct {

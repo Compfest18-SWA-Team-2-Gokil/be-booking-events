@@ -20,6 +20,9 @@ type OrderRepository interface {
 
 	// GetBuyerEmail dipakai saat buat Xendit invoice.
 	GetBuyerEmail(ctx context.Context, buyerID string) (string, error)
+
+	// HasAdmittedUnits memeriksa apakah ada unit tiket dalam order yang sudah ADMITTED di gerbang.
+	HasAdmittedUnits(ctx context.Context, orderID string) (bool, error)
 }
 
 // PaymentProvider abstraksi ke payment gateway (Xendit).

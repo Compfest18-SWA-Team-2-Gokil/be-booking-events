@@ -8,6 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	adminapp "github.com/ebk-tech/be-booking-events/internal/admin/application"
+	admindelivery "github.com/ebk-tech/be-booking-events/internal/admin/delivery"
+	admininfra "github.com/ebk-tech/be-booking-events/internal/admin/infrastructure"
 	authapp "github.com/ebk-tech/be-booking-events/internal/auth/application"
 	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
 	authinfra "github.com/ebk-tech/be-booking-events/internal/auth/infrastructure"
@@ -20,7 +23,6 @@ import (
 	eventsapp "github.com/ebk-tech/be-booking-events/internal/events/application"
 	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
 	eventsinfra "github.com/ebk-tech/be-booking-events/internal/events/infrastructure"
-	"strconv"
 	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
 	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
 	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
@@ -30,6 +32,7 @@ import (
 	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
 	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
+	"strconv"
 	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
 	"github.com/ebk-tech/be-booking-events/internal/migration"
 	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
@@ -203,14 +206,37 @@ func main() {
 		provisionUnitsUC, uploadImageUC,
 	)
 
+	// --- Admin module ---
+	adminRepo := admininfra.NewPostgresAdminRepository(pool)
+	adminUC := adminapp.NewAdminUseCases(adminRepo)
+	adminHandler := admindelivery.NewAdminHandler(adminUC)
+
 	// --- Router ---
 	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	})
+
 
 	routes.Register(r, routes.Deps{
 		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider),
 		RequireBuyer:        authdelivery.RequireRole("BUYER"),
 		RequireOrganizer:    authdelivery.RequireRole("ORGANIZER"),
 		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
+		RequireAdmin:        authdelivery.RequireRole("ADMIN"),
+		RequireQueueToken:   appmiddleware.RequireQueueToken(validateTokenUC),
 		Idempotency:         appmiddleware.Idempotency(redisClient),
 
 		Auth:      authHandler,
@@ -220,6 +246,7 @@ func main() {
 		Queue:     queueHandler,
 		Events:    eventsHandler,
 		Orders:    ordersHandler,
+		Admin:     adminHandler,
 	})
 
 	// --- HTTP server ---

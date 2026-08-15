@@ -28,5 +28,13 @@ func (uc *RequestRefundUseCase) Execute(ctx context.Context, orderID, buyerID st
 		return domain.ErrOrderNotPaid
 	}
 
+	hasAdmitted, err := uc.repo.HasAdmittedUnits(ctx, orderID)
+	if err != nil {
+		return err
+	}
+	if hasAdmitted {
+		return domain.ErrTicketAlreadyAdmitted
+	}
+
 	return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusRefundRequested)
 }

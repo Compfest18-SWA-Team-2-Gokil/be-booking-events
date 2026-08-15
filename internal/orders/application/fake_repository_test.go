@@ -12,6 +12,7 @@ type fakeOrderRepo struct {
 	orders   map[string]*domain.Order
 	payments map[string]*domain.Payment // keyed by order_id
 	emails   map[string]string          // buyer_id → email
+	admitted map[string]bool            // order_id -> has admitted units
 }
 
 func newFakeOrderRepo() *fakeOrderRepo {
@@ -19,6 +20,7 @@ func newFakeOrderRepo() *fakeOrderRepo {
 		orders:   make(map[string]*domain.Order),
 		payments: make(map[string]*domain.Payment),
 		emails:   make(map[string]string),
+		admitted: make(map[string]bool),
 	}
 }
 
@@ -79,6 +81,10 @@ func (r *fakeOrderRepo) GetBuyerEmail(_ context.Context, buyerID string) (string
 		return "", errors.New("user tidak ditemukan")
 	}
 	return email, nil
+}
+
+func (r *fakeOrderRepo) HasAdmittedUnits(_ context.Context, orderID string) (bool, error) {
+	return r.admitted[orderID], nil
 }
 
 // fakePaymentProvider

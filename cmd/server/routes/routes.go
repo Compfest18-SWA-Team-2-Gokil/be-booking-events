@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 
+	admindelivery "github.com/ebk-tech/be-booking-events/internal/admin/delivery"
 	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
 	checkindelivery "github.com/ebk-tech/be-booking-events/internal/checkin/delivery"
 	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
@@ -21,6 +22,8 @@ type Deps struct {
 	RequireBuyer        func(http.Handler) http.Handler
 	RequireOrganizer    func(http.Handler) http.Handler
 	RequireGateOperator func(http.Handler) http.Handler
+	RequireAdmin        func(http.Handler) http.Handler
+	RequireQueueToken   func(http.Handler) http.Handler
 	Idempotency         func(http.Handler) http.Handler
 
 	// Handlers
@@ -31,6 +34,7 @@ type Deps struct {
 	Queue     *queuedelivery.QueueHandler
 	Events    *eventsdelivery.EventsHandler
 	Orders    *ordersdelivery.OrdersHandler
+	Admin     *admindelivery.AdminHandler
 }
 
 // Register mendaftarkan semua route ke router.
@@ -43,5 +47,6 @@ func Register(r chi.Router, d Deps) {
 	registerCheckin(r, d)
 	registerQueue(r, d)
 	registerOrders(r, d)
+	registerAdmin(r, d)
 	registerDebug(r, d)
 }

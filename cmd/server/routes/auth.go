@@ -12,6 +12,7 @@ func registerAuth(r chi.Router, d Deps) {
 		r.Use(d.AuthMiddleware)
 
 		r.Get("/api/v1/auth/me", d.Auth.Me)
+		r.Post("/api/v1/auth/logout", d.Auth.Logout)
 
 		// ORGANIZER: assign gate operator ke event
 		r.With(d.RequireOrganizer).Post("/api/v1/events/{eventID}/gate-operators", d.Auth.AssignGateOperator)

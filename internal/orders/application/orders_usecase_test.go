@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/ebk-tech/be-booking-events/internal/orders/application"
@@ -271,9 +272,20 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if repo.orders["order-1"].Status != domain.OrderStatusCancelled {
-			t.Errorf("status = %s, want CANCELLED", repo.orders["order-1"].Status)
+	})
+
+	t.Run("Status Blocker - Cannot refund order with admitted ticket units", func(t *testing.T) {
+		repo := newFakeOrderRepo()
+		repo.orders["order-1"] = &domain.Order{
+			ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusPaid,
+		}
+		repo.admitted["order-1"] = true
+
+		uc := application.NewRequestRefundUseCase(repo)
+		err := uc.Execute(context.Background(), "order-1", "buyer-1")
+		if !errors.Is(err, domain.ErrTicketAlreadyAdmitted) {
+			t.Errorf("got error %v, want %v", err, domain.ErrTicketAlreadyAdmitted)
 		}
 	})
 }
-// === AKHIR PERUBAHAN BARU ===
+

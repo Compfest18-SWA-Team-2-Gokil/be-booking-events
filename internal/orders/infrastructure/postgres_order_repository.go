@@ -110,26 +110,58 @@ func (r *PostgresOrderRepository) UpdateOrderStatus(ctx context.Context, orderID
 
 	switch status {
 	case domain.OrderStatusPaid:
-		_, err = tx.Exec(ctx, `
+		tag, err := tx.Exec(ctx, `
 			UPDATE ticket_units SET status = 'CONFIRMED'
 			WHERE order_id = $1 AND status = 'HELD'
 		`, orderID)
+		if err != nil {
+			return fmt.Errorf("update ticket units: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			// Lost Seat edge-case (PRD-05): Hold kedaluwarsa dan kursi sudah diambil orang lain.
+			// Tandai order sebagai PAYMENT_DISCREPANCY untuk dipicu Auto-Refund / ditindaklanjuti Admin.
+			_, err = tx.Exec(ctx, `
+				UPDATE orders SET status = 'PAYMENT_DISCREPANCY', updated_at = NOW() WHERE id = $1
+			`, orderID)
+			if err != nil {
+				return fmt.Errorf("set payment discrepancy: %w", err)
+			}
+			if err := tx.Commit(ctx); err != nil {
+				return fmt.Errorf("commit tx: %w", err)
+			}
+			return domain.ErrPaymentDiscrepancy
+		}
 	case domain.OrderStatusRefunded:
 		_, err = tx.Exec(ctx, `
 			UPDATE ticket_units SET status = 'REFUNDED'
 			WHERE order_id = $1
 		`, orderID)
+		if err != nil {
+			return fmt.Errorf("update ticket units: %w", err)
+		}
 	case domain.OrderStatusCancelled:
 		_, err = tx.Exec(ctx, `
 			UPDATE ticket_units SET status = 'AVAILABLE', order_id = NULL
 			WHERE order_id = $1 AND status = 'HELD'
 		`, orderID)
-	}
-	if err != nil {
-		return fmt.Errorf("update ticket units: %w", err)
+		if err != nil {
+			return fmt.Errorf("update ticket units: %w", err)
+		}
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (r *PostgresOrderRepository) HasAdmittedUnits(ctx context.Context, orderID string) (bool, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM ticket_units
+		WHERE order_id = $1 AND status = 'ADMITTED'
+	`, orderID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check admitted units: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (r *PostgresOrderRepository) CreatePayment(ctx context.Context, p *domain.Payment) error {
