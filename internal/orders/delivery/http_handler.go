@@ -114,11 +114,13 @@ func (h *OrdersHandler) InitiatePayment(w http.ResponseWriter, r *http.Request) 
 // Tidak pakai JWT auth — diverifikasi via x-callback-token header dari Xendit.
 func (h *OrdersHandler) XenditWebhook(w http.ResponseWriter, r *http.Request) {
 	// Verifikasi callback token Xendit.
+	// === PERUBAHAN BARU: Memperketat validasi callback token agar aman dari token kosong ===
 	token := r.Header.Get("x-callback-token")
-	if !hmac.Equal([]byte(token), []byte(h.xenditCallbackToken)) {
+	if h.xenditCallbackToken == "" || token == "" || !hmac.Equal([]byte(token), []byte(h.xenditCallbackToken)) {
 		writeError(w, http.StatusUnauthorized, "callback token tidak valid")
 		return
 	}
+	// === AKHIR PERUBAHAN BARU ===
 
 	var payload struct {
 		ID            string `json:"id"`           // xendit invoice ID

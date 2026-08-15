@@ -106,6 +106,13 @@ components:
           format: uuid
         name:
           type: string
+        description:
+          type: string
+          description: Deskripsi event (opsional)
+        category:
+          type: string
+          enum: [music, olahraga, seni, workshop]
+          description: Kategori event
         date:
           type: string
           format: date-time
@@ -113,7 +120,7 @@ components:
           type: string
         image_url:
           type: string
-          description: URL gambar event di MinIO (opsional)
+          description: URL gambar event di MinIO object storage (hanya ada jika sudah diupload)
 
     TicketType:
       type: object
@@ -302,33 +309,47 @@ paths:
   /api/v1/events:
     post:
       tags: [Events]
-      summary: Buat event baru
-      description: Hanya ORGANIZER. OrganizerID otomatis dari JWT.
+      summary: Buat event baru (dengan foto wajib)
+      description: |
+        Hanya ORGANIZER. OrganizerID otomatis dari JWT.
+
+        Request menggunakan `multipart/form-data`. Semua field termasuk `image` **wajib** diisi.
+        Foto di-upload ke MinIO object storage; URL-nya langsung ada di response (`image_url`).
+        Untuk update foto setelah event dibuat, gunakan `POST /api/v1/events/{eventID}/image`.
       security:
         - BearerAuth: []
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              required: [name, date, location]
+              required: [name, date, location, category, image]
               properties:
                 name:
                   type: string
+                  description: Nama event
+                description:
+                  type: string
+                  description: Deskripsi event (opsional)
+                category:
+                  type: string
+                  enum: [music, olahraga, seni, workshop]
+                  description: "Kategori event. Nilai valid: music, olahraga, seni, workshop"
                 date:
                   type: string
                   format: date-time
                   description: RFC3339, harus di masa depan
                 location:
                   type: string
-            example:
-              name: "Konser Jakarta 2027"
-              date: "2027-06-15T19:00:00+07:00"
-              location: "GBK Jakarta"
+                  description: Lokasi event
+                image:
+                  type: string
+                  format: binary
+                  description: "Foto event — wajib (JPEG/PNG/WebP, maks 5MB)"
       responses:
         "201":
-          description: Event berhasil dibuat
+          description: Event berhasil dibuat. `image_url` ada jika gambar berhasil diupload.
           content:
             application/json:
               schema:

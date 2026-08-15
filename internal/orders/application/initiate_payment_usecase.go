@@ -17,8 +17,9 @@ func NewInitiatePaymentUseCase(repo OrderRepository, provider PaymentProvider) *
 }
 
 type InitiatePaymentOutput struct {
-	PaymentID  string `json:"payment_id"`
-	InvoiceURL string `json:"invoice_url"`
+	PaymentID       string `json:"payment_id"`
+	XenditInvoiceID string `json:"xendit_invoice_id"`
+	InvoiceURL      string `json:"invoice_url"`
 }
 
 func (uc *InitiatePaymentUseCase) Execute(ctx context.Context, orderID, buyerID string) (*InitiatePaymentOutput, error) {
@@ -66,7 +67,8 @@ func (uc *InitiatePaymentUseCase) Execute(ctx context.Context, orderID, buyerID 
 	}
 
 	return &InitiatePaymentOutput{
-		PaymentID:  payment.ID,
-		InvoiceURL: result.InvoiceURL,
+		PaymentID:       payment.ID,
+		XenditInvoiceID: result.InvoiceID,
+		InvoiceURL:      result.InvoiceURL,
 	}, nil
 }

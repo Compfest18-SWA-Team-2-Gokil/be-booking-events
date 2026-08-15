@@ -176,3 +176,104 @@ func TestApproveRefundUseCase_NotRequested(t *testing.T) {
 		t.Fatalf("expected ErrRefundNotRequested, got %v", err)
 	}
 }
+
+// === PERUBAHAN BARU: Unit Test Di Paling Bawah ===
+// TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder memverifikasi bahwa:
+// 1. Webhook PAID ganda diabaikan secara aman (idempotent success).
+// 2. Webhook EXPIRED tidak membatalkan order yang sudah PAID (out-of-order).
+// 3. Webhook EXPIRED ganda diabaikan secara aman pada order yang sudah CANCELLED (idempotent expired).
+func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
+	t.Run("Idempotent PAID - Second PAID call should do nothing and return nil", func(t *testing.T) {
+		repo := newFakeOrderRepo()
+		repo.orders["order-1"] = &domain.Order{
+			ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusPaymentPending,
+		}
+		repo.payments["order-1"] = &domain.Payment{
+			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusPending,
+		}
+
+		uc := application.NewConfirmPaymentUseCase(repo)
+
+		// Call 1: PAID -> Sukses mengubah ke PAID
+		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
+			XenditInvoiceID: "xendit-inv-123",
+			ExternalID:      "order-1",
+			PaymentMethod:   "CREDIT_CARD",
+			Status:          "PAID",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error on first call: %v", err)
+		}
+		if repo.orders["order-1"].Status != domain.OrderStatusPaid {
+			t.Errorf("status = %s, want PAID", repo.orders["order-1"].Status)
+		}
+
+		// Call 2: PAID -> Tetap PAID (idempotent)
+		err = uc.Execute(context.Background(), application.ConfirmPaymentInput{
+			XenditInvoiceID: "xendit-inv-123",
+			ExternalID:      "order-1",
+			PaymentMethod:   "CREDIT_CARD",
+			Status:          "PAID",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error on second call: %v", err)
+		}
+		if repo.orders["order-1"].Status != domain.OrderStatusPaid {
+			t.Errorf("status = %s, want PAID", repo.orders["order-1"].Status)
+		}
+	})
+
+	t.Run("Out of Order EXPIRED - EXPIRED call after PAID should be ignored", func(t *testing.T) {
+		repo := newFakeOrderRepo()
+		repo.orders["order-1"] = &domain.Order{
+			ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusPaid,
+		}
+		repo.payments["order-1"] = &domain.Payment{
+			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusSuccess,
+		}
+
+		uc := application.NewConfirmPaymentUseCase(repo)
+
+		// Webhook EXPIRED masuk setelah PAID -> Harusnya diabaikan dan status tetap PAID
+		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
+			XenditInvoiceID: "xendit-inv-123",
+			ExternalID:      "order-1",
+			Status:          "EXPIRED",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if repo.orders["order-1"].Status != domain.OrderStatusPaid {
+			t.Errorf("status = %s, want PAID (jangan sampai berubah jadi CANCELLED)", repo.orders["order-1"].Status)
+		}
+		if repo.payments["order-1"].Status != domain.PaymentStatusSuccess {
+			t.Errorf("payment status = %s, want SUCCESS", repo.payments["order-1"].Status)
+		}
+	})
+
+	t.Run("Idempotent EXPIRED - Second EXPIRED call on CANCELLED order should be ignored", func(t *testing.T) {
+		repo := newFakeOrderRepo()
+		repo.orders["order-1"] = &domain.Order{
+			ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusCancelled,
+		}
+		repo.payments["order-1"] = &domain.Payment{
+			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusFailed,
+		}
+
+		uc := application.NewConfirmPaymentUseCase(repo)
+
+		// Webhook EXPIRED masuk lagi -> Harusnya diabaikan
+		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
+			XenditInvoiceID: "xendit-inv-123",
+			ExternalID:      "order-1",
+			Status:          "EXPIRED",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if repo.orders["order-1"].Status != domain.OrderStatusCancelled {
+			t.Errorf("status = %s, want CANCELLED", repo.orders["order-1"].Status)
+		}
+	})
+}
+// === AKHIR PERUBAHAN BARU ===

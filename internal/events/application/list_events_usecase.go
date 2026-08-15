@@ -14,8 +14,14 @@ func NewListEventsUseCase(repo EventRepository) *ListEventsUseCase {
 	return &ListEventsUseCase{repo: repo}
 }
 
-func (uc *ListEventsUseCase) Execute(ctx context.Context) ([]*domain.Event, error) {
-	return uc.repo.ListEvents(ctx)
+func (uc *ListEventsUseCase) Execute(ctx context.Context, filter ListEventsFilter) ([]*domain.Event, error) {
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
+	if filter.Limit < 1 {
+		filter.Limit = 20
+	}
+	return uc.repo.ListEvents(ctx, filter)
 }
 
 type ListTicketTypesUseCase struct {

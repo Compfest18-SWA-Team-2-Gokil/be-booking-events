@@ -89,6 +89,7 @@ func main() {
 	}
 
 	ran := 0
+	
 	for _, f := range files {
 		sql, err := os.ReadFile(filepath.Join(seedsDir, f))
 		if err != nil {
