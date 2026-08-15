@@ -2,9 +2,11 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: compfest          # ← bukan booking_events
-      POSTGRES_USER: compfest_dev    # ← bukan dev
-      POSTGRES_PASSWORD: compfest_dev # ← bukan dev
+      POSTGRES_DB: compfest
+      POSTGRES_USER: compfest_dev
+      POSTGRES_PASSWORD: compfest_dev
+      POSTGRES_HOST_AUTH_METHOD: md5
+    command: ["postgres", "-c", "listen_addresses=*"]
     ports:
       - "5455:5432"
     healthcheck:
@@ -16,9 +18,11 @@ services:
   postgres_test:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: compfest_test    
-      POSTGRES_USER: compfest_dev    
-      POSTGRES_PASSWORD: compfest_dev 
+      POSTGRES_DB: compfest_test
+      POSTGRES_USER: compfest_dev
+      POSTGRES_PASSWORD: compfest_dev
+      POSTGRES_HOST_AUTH_METHOD: md5
+    command: ["postgres", "-c", "listen_addresses=*"]
     ports:
       - "5433:5432"
     healthcheck:
