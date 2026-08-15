@@ -16,6 +16,7 @@ tags:
   - name: Check-in
   - name: Queue
   - name: Orders
+  - name: Admin
 
 components:
   securitySchemes:
@@ -246,6 +247,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+        "401":
+          description: Token tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout user dan konfirmasi pemutusan sesi
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Logout berhasil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "berhasil logout"
         "401":
           description: Token tidak valid
           content:
@@ -1073,3 +1098,141 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/disputes:
+    get:
+      tags: [Admin]
+      summary: List disputed and anomalous orders (ADMIN only)
+      description: Mengambil daftar pesanan anomali (PAYMENT_DISCREPANCY dan REFUND_REQUESTED) untuk ditindaklanjuti Platform Administrator.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List transaksi sengketa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 2
+                  disputes:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Order"
+        "403":
+          description: Akses ditolak (Hanya ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/orders/{orderID}/override:
+    post:
+      tags: [Admin]
+      summary: Manual override order status (ADMIN only)
+      description: Mengubah status order dan unit tiket secara manual dengan kewajiban mencatat alasan ke audit log.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/orderID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, reason]
+              properties:
+                status:
+                  type: string
+                  enum: [PAID, CANCELLED, REFUNDED, PAYMENT_DISCREPANCY]
+                reason:
+                  type: string
+                  example: "Kompensasi kendala payment gateway"
+      responses:
+        "200":
+          description: Status berhasil di-override
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "order status berhasil di-override"
+                  status:
+                    type: string
+                    example: "REFUNDED"
+        "403":
+          description: Akses ditolak (Hanya ADMIN)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/tickets/{unitID}/reassign:
+    post:
+      tags: [Admin]
+      summary: Reassign ticket ownership/seat (ADMIN only)
+      description: Memindahkan kepemilikan unit tiket ke pesanan lain atau mengganti nomor kursi jika terjadi sengketa.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: unitID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_order_id, reason]
+              properties:
+                target_order_id:
+                  type: string
+                  format: uuid
+                new_seat_number:
+                  type: string
+                  example: "VIP-A12"
+                reason:
+                  type: string
+                  example: "Sengketa ganti kursi"
+      responses:
+        "200":
+          description: Tiket berhasil dipindahtangankan
+        "403":
+          description: Akses ditolak (Hanya ADMIN)
+
+  /api/v1/admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: View immutable audit trail logs (ADMIN only)
+      description: Mengambil riwayat audit log mutasi status tiket, pesanan, dan tindakan override admin.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Daftar audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  audit_logs:
+                    type: array
+                    items:
+                      type: object
