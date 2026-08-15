@@ -81,6 +81,19 @@ func (r *fakeOrderRepo) GetBuyerEmail(_ context.Context, buyerID string) (string
 	return email, nil
 }
 
+func (r *fakeOrderRepo) ConfirmOrderPayment(_ context.Context, orderID string) error {
+	o, ok := r.orders[orderID]
+	if !ok {
+		return domain.ErrOrderNotFound
+	}
+	o.Status = domain.OrderStatusPaid
+	return nil
+}
+
+func (r *fakeOrderRepo) HasAdmittedUnits(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
 // fakePaymentProvider
 type fakePaymentProvider struct {
 	shouldFail bool

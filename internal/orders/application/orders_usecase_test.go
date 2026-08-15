@@ -90,7 +90,7 @@ func TestConfirmPaymentUseCase_Paid(t *testing.T) {
 		ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123",
 	}
 
-	uc := application.NewConfirmPaymentUseCase(repo)
+	uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{})
 	err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
 		XenditInvoiceID: "xendit-inv-123",
 		ExternalID:      "order-1",
@@ -192,7 +192,7 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusPending,
 		}
 
-		uc := application.NewConfirmPaymentUseCase(repo)
+		uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{})
 
 		// Call 1: PAID -> Sukses mengubah ke PAID
 		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
@@ -232,7 +232,7 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusSuccess,
 		}
 
-		uc := application.NewConfirmPaymentUseCase(repo)
+		uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{})
 
 		// Webhook EXPIRED masuk setelah PAID -> Harusnya diabaikan dan status tetap PAID
 		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
@@ -260,7 +260,7 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusFailed,
 		}
 
-		uc := application.NewConfirmPaymentUseCase(repo)
+		uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{})
 
 		// Webhook EXPIRED masuk lagi -> Harusnya diabaikan
 		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
