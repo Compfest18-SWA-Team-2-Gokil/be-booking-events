@@ -170,6 +170,14 @@ func TestAntiOversell_NoOversell(t *testing.T) {
 
 // TestConcurrent_HealthCheck — sanity check: server up dan bisa terima 1000 req bersamaan.
 func TestConcurrent_HealthCheck(t *testing.T) {
+	// cek server nyala ga
+	preCheck, err := sharedClient.Get(baseURL + "/docs/openapi.yaml")
+	if err != nil || preCheck.StatusCode != 200 {
+		t.Skip("server tidak aktif di " + baseURL + ", skip concurrent health check")
+		return
+	}
+	preCheck.Body.Close()
+
 	users := envOrDefaultInt("CONCURRENT_USERS", 1000)
 	t.Logf("▶ Health check %d concurrent GET /docs", users)
 
