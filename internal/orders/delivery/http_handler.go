@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
@@ -95,8 +96,18 @@ func (h *OrdersHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/orders/my — semua order milik buyer yang sedang login
 func (h *OrdersHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 	buyerID := authdelivery.UserIDFromCtx(r.Context())
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
 
-	orders, err := h.getOrderUC.ExecuteByBuyer(r.Context(), buyerID)
+	orders, total, err := h.getOrderUC.ExecuteByBuyer(r.Context(), buyerID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "gagal mengambil riwayat pesanan")
 		return
@@ -104,7 +115,21 @@ func (h *OrdersHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 	if orders == nil {
 		orders = []*domain.Order{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"orders": orders})
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"orders": orders,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
+	})
 }
 
 // POST /api/v1/orders/{orderID}/pay
@@ -218,8 +243,18 @@ func (h *OrdersHandler) ApproveRefund(w http.ResponseWriter, r *http.Request) {
 // GET /api/v1/orders/organizer/refunds — ORGANIZER melihat daftar pengajuan refund
 func (h *OrdersHandler) ListOrganizerRefunds(w http.ResponseWriter, r *http.Request) {
 	organizerID := authdelivery.UserIDFromCtx(r.Context())
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
 
-	refunds, err := h.orderRepo.GetRefundRequestsByOrganizer(r.Context(), organizerID)
+	refunds, total, err := h.orderRepo.GetRefundRequestsByOrganizer(r.Context(), organizerID, limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "gagal mengambil daftar refund")
 		return
@@ -228,7 +263,20 @@ func (h *OrdersHandler) ListOrganizerRefunds(w http.ResponseWriter, r *http.Requ
 		refunds = []*application.RefundRequestItem{}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"refunds": refunds})
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"refunds": refunds,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
+	})
 }
 
 

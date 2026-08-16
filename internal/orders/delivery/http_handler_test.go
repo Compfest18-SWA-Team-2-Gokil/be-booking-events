@@ -60,14 +60,14 @@ func (r *fakeOrderRepository) GetOrder(ctx context.Context, orderID string) (*do
 	return o, nil
 }
 
-func (r *fakeOrderRepository) GetOrdersByBuyer(_ context.Context, buyerID string) ([]*domain.Order, error) {
+func (r *fakeOrderRepository) GetOrdersByBuyer(_ context.Context, buyerID string, _, _ int) ([]*domain.Order, int, error) {
 	var list []*domain.Order
 	for _, o := range r.orders {
 		if o.BuyerID == buyerID {
 			list = append(list, o)
 		}
 	}
-	return list, nil
+	return list, len(list), nil
 }
 
 func (r *fakeOrderRepository) UpdateOrderStatus(ctx context.Context, orderID string, status domain.OrderStatus) error {
@@ -121,8 +121,8 @@ func (r *fakeOrderRepository) GetEventDate(_ context.Context, _ string) (time.Ti
 	return time.Now().Add(48 * time.Hour), nil // Default H+2 (valid)
 }
 
-func (r *fakeOrderRepository) GetRefundRequestsByOrganizer(_ context.Context, _ string) ([]*ordersapp.RefundRequestItem, error) {
-	return nil, nil
+func (r *fakeOrderRepository) GetRefundRequestsByOrganizer(_ context.Context, _ string, _, _ int) ([]*ordersapp.RefundRequestItem, int, error) {
+	return nil, 0, nil
 }
 
 type fakePaymentProvider struct {

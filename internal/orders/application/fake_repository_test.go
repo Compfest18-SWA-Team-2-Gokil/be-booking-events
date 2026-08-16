@@ -46,22 +46,22 @@ func (r *fakeOrderRepo) GetOrder(_ context.Context, orderID string) (*domain.Ord
 	return o, nil
 }
 
-func (r *fakeOrderRepo) GetOrdersByBuyer(_ context.Context, buyerID string) ([]*domain.Order, error) {
+func (r *fakeOrderRepo) GetOrdersByBuyer(_ context.Context, buyerID string, _, _ int) ([]*domain.Order, int, error) {
 	var list []*domain.Order
 	for _, o := range r.orders {
 		if o.BuyerID == buyerID {
 			list = append(list, o)
 		}
 	}
-	return list, nil
+	return list, len(list), nil
 }
 
 func (r *fakeOrderRepo) GetEventDate(_ context.Context, _ string) (time.Time, error) {
 	return time.Now().Add(48 * time.Hour), nil // Default H+2 (valid refund)
 }
 
-func (r *fakeOrderRepo) GetRefundRequestsByOrganizer(_ context.Context, _ string) ([]*application.RefundRequestItem, error) {
-	return nil, nil
+func (r *fakeOrderRepo) GetRefundRequestsByOrganizer(_ context.Context, _ string, _, _ int) ([]*application.RefundRequestItem, int, error) {
+	return nil, 0, nil
 }
 
 func (r *fakeOrderRepo) UpdateOrderStatus(_ context.Context, orderID string, status domain.OrderStatus) error {

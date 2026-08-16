@@ -13,8 +13,8 @@ type OrderRepository interface {
 	CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error)
 
 	GetOrder(ctx context.Context, orderID string) (*domain.Order, error)
-	// GetOrdersByBuyer mengembalikan seluruh order milik buyer tertentu, paling baru duluan.
-	GetOrdersByBuyer(ctx context.Context, buyerID string) ([]*domain.Order, error)
+	// GetOrdersByBuyer mengambil semua order milik buyer dengan pagination.
+	GetOrdersByBuyer(ctx context.Context, buyerID string, limit, offset int) ([]*domain.Order, int, error)
 	UpdateOrderStatus(ctx context.Context, orderID string, status domain.OrderStatus) error
 
 	// ConfirmOrderPayment konfirmasi pembayaran atomik; return ErrLostSeat jika tiket sudah direbut.
@@ -33,7 +33,7 @@ type OrderRepository interface {
 	GetEventDate(ctx context.Context, eventID string) (time.Time, error)
 
 	// GetRefundRequestsByOrganizer mengambil daftar permintaan refund untuk event milik organizer.
-	GetRefundRequestsByOrganizer(ctx context.Context, organizerID string) ([]*RefundRequestItem, error)
+	GetRefundRequestsByOrganizer(ctx context.Context, organizerID string, limit, offset int) ([]*RefundRequestItem, int, error)
 }
 
 type RefundRequestItem struct {

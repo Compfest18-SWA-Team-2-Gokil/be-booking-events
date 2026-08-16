@@ -50,8 +50,22 @@ func (r *PostgresEventRepository) GetEvent(ctx context.Context, eventID string) 
 	return e, nil
 }
 
-func (r *PostgresEventRepository) ListEvents(ctx context.Context, filter application.ListEventsFilter) ([]*domain.Event, error) {
+
+func (r *PostgresEventRepository) ListEvents(ctx context.Context, filter application.ListEventsFilter) ([]*domain.Event, int, error) {
 	offset := (filter.Page - 1) * filter.Limit
+	var total int
+
+	if filter.Category != "" {
+		err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM events WHERE category = $1`, filter.Category).Scan(&total)
+		if err != nil {
+			return nil, 0, fmt.Errorf("count events: %w", err)
+		}
+	} else {
+		err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM events`).Scan(&total)
+		if err != nil {
+			return nil, 0, fmt.Errorf("count events: %w", err)
+		}
+	}
 
 	var rows pgx.Rows
 	var err error
@@ -74,7 +88,7 @@ func (r *PostgresEventRepository) ListEvents(ctx context.Context, filter applica
 		`, filter.Limit, offset)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("list events: %w", err)
+		return nil, 0, fmt.Errorf("list events: %w", err)
 	}
 	defer rows.Close()
 
@@ -83,12 +97,12 @@ func (r *PostgresEventRepository) ListEvents(ctx context.Context, filter applica
 		e := &domain.Event{}
 		var category string
 		if err := rows.Scan(&e.ID, &e.OrganizerID, &e.Name, &e.Description, &category, &e.Date, &e.Location, &e.ImageURL); err != nil {
-			return nil, fmt.Errorf("scan event: %w", err)
+			return nil, 0, fmt.Errorf("scan event: %w", err)
 		}
 		e.Category = domain.Category(category)
 		events = append(events, e)
 	}
-	return events, rows.Err()
+	return events, total, rows.Err()
 }
 
 func (r *PostgresEventRepository) UpdateEvent(ctx context.Context, e *domain.Event) error {
