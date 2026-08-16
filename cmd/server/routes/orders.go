@@ -14,15 +14,15 @@ func registerOrders(r chi.Router, d Deps) {
 
 		// BUYER: buat order dilindungi queue guard + idempotency
 		r.With(d.RequireBuyer, d.QueueGuard, d.Idempotency).Post("/api/v1/orders", d.Orders.CreateOrder)
+		// /orders/my harus sebelum /orders/{orderID} supaya chi tidak menganggap "my" sebagai orderID param
+		r.With(d.RequireBuyer).Get("/api/v1/orders/my", d.Orders.GetMyOrders)
 		r.With(d.RequireBuyer).Get("/api/v1/orders/{orderID}", d.Orders.GetOrder)
 		r.With(d.RequireBuyer, d.Idempotency).Post("/api/v1/orders/{orderID}/pay", d.Orders.InitiatePayment)
 		r.With(d.RequireBuyer).Post("/api/v1/orders/{orderID}/refund", d.Orders.RequestRefund)
 
-		// ORGANIZER: approve refund
+		// ORGANIZER: approve refund & lihat daftar pengajuan refund
+		r.With(d.RequireOrganizer).Get("/api/v1/orders/organizer/refunds", d.Orders.ListOrganizerRefunds)
 		r.With(d.RequireOrganizer).Post("/api/v1/orders/{orderID}/refund/approve", d.Orders.ApproveRefund)
-
-		// Respon Webhook
-		
 	})
 }
 

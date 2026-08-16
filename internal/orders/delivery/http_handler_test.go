@@ -60,6 +60,16 @@ func (r *fakeOrderRepository) GetOrder(ctx context.Context, orderID string) (*do
 	return o, nil
 }
 
+func (r *fakeOrderRepository) GetOrdersByBuyer(_ context.Context, buyerID string, _, _ int) ([]*domain.Order, int, error) {
+	var list []*domain.Order
+	for _, o := range r.orders {
+		if o.BuyerID == buyerID {
+			list = append(list, o)
+		}
+	}
+	return list, len(list), nil
+}
+
 func (r *fakeOrderRepository) UpdateOrderStatus(ctx context.Context, orderID string, status domain.OrderStatus) error {
 	o, ok := r.orders[orderID]
 	if !ok {
@@ -105,6 +115,14 @@ func (r *fakeOrderRepository) GetBuyerEmail(ctx context.Context, buyerID string)
 		return "", errors.New("buyer tidak ditemukan")
 	}
 	return email, nil
+}
+
+func (r *fakeOrderRepository) GetEventDate(_ context.Context, _ string) (time.Time, error) {
+	return time.Now().Add(48 * time.Hour), nil // Default H+2 (valid)
+}
+
+func (r *fakeOrderRepository) GetRefundRequestsByOrganizer(_ context.Context, _ string, _, _ int) ([]*ordersapp.RefundRequestItem, int, error) {
+	return nil, 0, nil
 }
 
 type fakePaymentProvider struct {
@@ -167,7 +185,7 @@ func setupTestRouter(handler *delivery.OrdersHandler, tokenProvider *mockTokenPr
 func TestOrdersHandler_CreateOrder(t *testing.T) {
 	repo := newFakeOrderRepository()
 	createOrderUC := ordersapp.NewCreateOrderUseCase(repo)
-	handler := delivery.NewOrdersHandler(createOrderUC, nil, nil, nil, nil, nil, "")
+	handler := delivery.NewOrdersHandler(createOrderUC, nil, nil, nil, nil, nil, repo, "")
 	router := setupTestRouter(handler, &mockTokenProvider{})
 
 	t.Run("Success", func(t *testing.T) {
@@ -221,7 +239,7 @@ func TestOrdersHandler_GetOrder(t *testing.T) {
 		TotalAmount: 150000,
 	}
 	getOrderUC := ordersapp.NewGetOrderUseCase(repo)
-	handler := delivery.NewOrdersHandler(nil, nil, nil, nil, nil, getOrderUC, "")
+	handler := delivery.NewOrdersHandler(nil, nil, nil, nil, nil, getOrderUC, repo, "")
 	router := setupTestRouter(handler, &mockTokenProvider{})
 
 	t.Run("Success", func(t *testing.T) {
@@ -262,7 +280,7 @@ func TestOrdersHandler_InitiatePayment(t *testing.T) {
 
 	provider := &fakePaymentProvider{}
 	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(repo, provider)
-	handler := delivery.NewOrdersHandler(nil, initiatePayUC, nil, nil, nil, nil, "")
+	handler := delivery.NewOrdersHandler(nil, initiatePayUC, nil, nil, nil, nil, repo, "")
 	router := setupTestRouter(handler, &mockTokenProvider{})
 
 	t.Run("Success", func(t *testing.T) {
@@ -307,7 +325,7 @@ func TestOrdersHandler_XenditWebhook(t *testing.T) {
 
 	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{})
 	callbackToken := "supersecret"
-	handler := delivery.NewOrdersHandler(nil, nil, confirmPayUC, nil, nil, nil, callbackToken)
+	handler := delivery.NewOrdersHandler(nil, nil, confirmPayUC, nil, nil, nil, repo, callbackToken)
 	router := setupTestRouter(handler, &mockTokenProvider{})
 
 	t.Run("Success PAID", func(t *testing.T) {
@@ -381,7 +399,7 @@ func TestOrdersHandler_RequestRefund(t *testing.T) {
 	}
 
 	requestRefundUC := ordersapp.NewRequestRefundUseCase(repo)
-	handler := delivery.NewOrdersHandler(nil, nil, nil, requestRefundUC, nil, nil, "")
+	handler := delivery.NewOrdersHandler(nil, nil, nil, requestRefundUC, nil, nil, repo, "")
 	router := setupTestRouter(handler, &mockTokenProvider{})
 
 	t.Run("Success", func(t *testing.T) {
@@ -415,7 +433,7 @@ func TestOrdersHandler_ApproveRefund(t *testing.T) {
 
 	provider := &fakePaymentProvider{}
 	approveRefundUC := ordersapp.NewApproveRefundUseCase(repo, provider)
-	handler := delivery.NewOrdersHandler(nil, nil, nil, nil, approveRefundUC, nil, "")
+	handler := delivery.NewOrdersHandler(nil, nil, nil, nil, approveRefundUC, nil, repo, "")
 	
 	// Gunakan role ORGANIZER agar lolos
 	tokenProvider := &mockTokenProvider{

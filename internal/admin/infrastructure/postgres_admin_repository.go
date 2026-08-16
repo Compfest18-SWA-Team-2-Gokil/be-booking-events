@@ -18,16 +18,31 @@ func NewPostgresAdminRepository(pool *pgxpool.Pool) *PostgresAdminRepository {
 
 var _ application.AdminRepository = (*PostgresAdminRepository)(nil)
 
-func (r *PostgresAdminRepository) ListDisputes(ctx context.Context) ([]application.DisputeOrder, error) {
+func (r *PostgresAdminRepository) ListDisputes(ctx context.Context, limit, offset int) ([]application.DisputeOrder, int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM orders o
+		WHERE o.status IN ('PAYMENT_DISCREPANCY', 'REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
+	`).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count disputes: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
 	rows, err := r.pool.Query(ctx, `
 		SELECT o.id, o.buyer_id, u.email, o.event_id, o.status, o.total_amount, o.created_at, o.updated_at
 		FROM orders o
 		JOIN users u ON u.id = o.buyer_id
-		WHERE o.status IN ('PAYMENT_DISCREPANCY', 'REFUND_REQUESTED')
+		WHERE o.status IN ('PAYMENT_DISCREPANCY', 'REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
 		ORDER BY o.updated_at DESC
-	`)
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("list disputes: %w", err)
+		return nil, 0, fmt.Errorf("list disputes: %w", err)
 	}
 	defer rows.Close()
 
@@ -36,11 +51,11 @@ func (r *PostgresAdminRepository) ListDisputes(ctx context.Context) ([]applicati
 		var d application.DisputeOrder
 		if err := rows.Scan(&d.OrderID, &d.BuyerID, &d.BuyerEmail, &d.EventID,
 			&d.Status, &d.TotalAmount, &d.CreatedAt, &d.UpdatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		result = append(result, d)
 	}
-	return result, rows.Err()
+	return result, total, rows.Err()
 }
 
 func (r *PostgresAdminRepository) OverrideOrderStatus(ctx context.Context, orderID, adminID, newStatus, reason string) error {
@@ -61,6 +76,10 @@ func (r *PostgresAdminRepository) OverrideOrderStatus(ctx context.Context, order
 		return fmt.Errorf("update order: %w", err)
 	}
 
+	if newStatus == "REFUNDED" {
+		_, _ = tx.Exec(ctx, `UPDATE ticket_units SET status = 'REFUNDED', updated_at = NOW() WHERE order_id = $1`, orderID)
+	}
+
 	// Audit log wajib — override admin harus traceable.
 	meta := fmt.Sprintf(`{"reason":%q}`, reason)
 	if _, err := tx.Exec(ctx, `
@@ -73,10 +92,17 @@ func (r *PostgresAdminRepository) OverrideOrderStatus(ctx context.Context, order
 	return tx.Commit(ctx)
 }
 
-func (r *PostgresAdminRepository) ListAuditLogs(ctx context.Context, limit int) ([]application.AuditLogEntry, error) {
-	if limit <= 0 || limit > 100 {
-		limit = 50
+func (r *PostgresAdminRepository) ListAuditLogs(ctx context.Context, limit, offset int) ([]application.AuditLogEntry, int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs`).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count audit logs: %w", err)
 	}
+
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+
 	rows, err := r.pool.Query(ctx, `
 		SELECT 
 			a.id::text, 
@@ -93,10 +119,10 @@ func (r *PostgresAdminRepository) ListAuditLogs(ctx context.Context, limit int) 
 		FROM audit_logs a
 		LEFT JOIN users u ON u.id = a.actor_id
 		ORDER BY a.created_at DESC
-		LIMIT $1
-	`, limit)
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("list audit logs: %w", err)
+		return nil, 0, fmt.Errorf("list audit logs: %w", err)
 	}
 	defer rows.Close()
 
@@ -116,9 +142,9 @@ func (r *PostgresAdminRepository) ListAuditLogs(ctx context.Context, limit int) 
 			&entry.Reason,
 			&entry.CreatedAt,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		result = append(result, entry)
 	}
-	return result, rows.Err()
+	return result, total, rows.Err()
 }

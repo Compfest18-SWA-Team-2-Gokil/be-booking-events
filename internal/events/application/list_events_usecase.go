@@ -14,12 +14,12 @@ func NewListEventsUseCase(repo EventRepository) *ListEventsUseCase {
 	return &ListEventsUseCase{repo: repo}
 }
 
-func (uc *ListEventsUseCase) Execute(ctx context.Context, filter ListEventsFilter) ([]*domain.Event, error) {
+func (uc *ListEventsUseCase) Execute(ctx context.Context, filter ListEventsFilter) ([]*domain.Event, int, error) {
 	if filter.Page < 1 {
 		filter.Page = 1
 	}
 	if filter.Limit < 1 {
-		filter.Limit = 20
+		filter.Limit = 10
 	}
 	return uc.repo.ListEvents(ctx, filter)
 }

@@ -194,6 +194,7 @@ func main() {
 	ordersHandler := ordersdelivery.NewOrdersHandler(
 		createOrderUC, initiatePayUC, confirmPayUC,
 		requestRefundUC, approveRefundUC, getOrderUC,
+		orderRepo,
 		xenditCallbackToken,
 	)
 

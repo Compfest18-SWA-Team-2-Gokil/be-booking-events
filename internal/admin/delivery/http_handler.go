@@ -31,7 +31,18 @@ func NewAdminHandler(
 
 // GET /api/v1/admin/disputes
 func (h *AdminHandler) ListDisputes(w http.ResponseWriter, r *http.Request) {
-	disputes, err := h.listDisputesUC.Execute(r.Context())
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
+
+	disputes, total, err := h.listDisputesUC.Execute(r.Context(), limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "gagal mengambil data dispute")
 		return
@@ -39,9 +50,21 @@ func (h *AdminHandler) ListDisputes(w http.ResponseWriter, r *http.Request) {
 	if disputes == nil {
 		disputes = []application.DisputeOrder{}
 	}
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total":    len(disputes),
+		"total":    total,
 		"disputes": disputes,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
 	})
 }
 
@@ -78,13 +101,18 @@ func (h *AdminHandler) OverrideOrder(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/admin/audit-logs
 func (h *AdminHandler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
-	limitStr := r.URL.Query().Get("limit")
-	limit := 50
-	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
-		limit = l
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
 	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
 
-	logs, err := h.listAuditLogsUC.Execute(r.Context(), limit)
+	logs, total, err := h.listAuditLogsUC.Execute(r.Context(), limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "gagal mengambil data audit logs")
 		return
@@ -92,9 +120,21 @@ func (h *AdminHandler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 	if logs == nil {
 		logs = []application.AuditLogEntry{}
 	}
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"total":      len(logs),
+		"total":      total,
 		"audit_logs": logs,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
 	})
 }
 

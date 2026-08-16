@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
@@ -13,12 +14,13 @@ import (
 )
 
 type OrdersHandler struct {
-	createOrderUC    *application.CreateOrderUseCase
-	initiatePayUC    *application.InitiatePaymentUseCase
-	confirmPayUC     *application.ConfirmPaymentUseCase
-	requestRefundUC  *application.RequestRefundUseCase
-	approveRefundUC  *application.ApproveRefundUseCase
-	getOrderUC       *application.GetOrderUseCase
+	createOrderUC       *application.CreateOrderUseCase
+	initiatePayUC       *application.InitiatePaymentUseCase
+	confirmPayUC        *application.ConfirmPaymentUseCase
+	requestRefundUC     *application.RequestRefundUseCase
+	approveRefundUC     *application.ApproveRefundUseCase
+	getOrderUC          *application.GetOrderUseCase
+	orderRepo           application.OrderRepository
 	xenditCallbackToken string
 }
 
@@ -29,6 +31,7 @@ func NewOrdersHandler(
 	requestRefundUC *application.RequestRefundUseCase,
 	approveRefundUC *application.ApproveRefundUseCase,
 	getOrderUC *application.GetOrderUseCase,
+	orderRepo application.OrderRepository,
 	xenditCallbackToken string,
 ) *OrdersHandler {
 	return &OrdersHandler{
@@ -38,6 +41,7 @@ func NewOrdersHandler(
 		requestRefundUC:     requestRefundUC,
 		approveRefundUC:     approveRefundUC,
 		getOrderUC:          getOrderUC,
+		orderRepo:           orderRepo,
 		xenditCallbackToken: xenditCallbackToken,
 	}
 }
@@ -89,6 +93,45 @@ func (h *OrdersHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, order)
 }
 
+// GET /api/v1/orders/my — semua order milik buyer yang sedang login
+func (h *OrdersHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
+	buyerID := authdelivery.UserIDFromCtx(r.Context())
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
+
+	orders, total, err := h.getOrderUC.ExecuteByBuyer(r.Context(), buyerID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "gagal mengambil riwayat pesanan")
+		return
+	}
+	if orders == nil {
+		orders = []*domain.Order{}
+	}
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"orders": orders,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
+	})
+}
+
 // POST /api/v1/orders/{orderID}/pay
 func (h *OrdersHandler) InitiatePayment(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "orderID")
@@ -99,10 +142,12 @@ func (h *OrdersHandler) InitiatePayment(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case errors.Is(err, domain.ErrOrderNotFound):
 			writeError(w, http.StatusNotFound, "order tidak ditemukan")
+		case errors.Is(err, domain.ErrOrderCancelled):
+			writeError(w, http.StatusBadRequest, "Batas waktu pembayaran telah habis. Pesanan telah dibatalkan otomatis.")
 		case errors.Is(err, domain.ErrOrderNotPending):
-			writeError(w, http.StatusBadRequest, "order tidak bisa dibayar")
+			writeError(w, http.StatusBadRequest, "order tidak dalam status yang bisa dibayar")
 		default:
-			writeError(w, http.StatusInternalServerError, "gagal membuat invoice")
+			writeError(w, http.StatusInternalServerError, "gagal membuat invoice pembayaran")
 		}
 		return
 	}
@@ -159,6 +204,8 @@ func (h *OrdersHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "order tidak ditemukan")
 		case errors.Is(err, domain.ErrOrderNotPaid):
 			writeError(w, http.StatusBadRequest, "hanya order yang sudah dibayar bisa direfund")
+		case errors.Is(err, domain.ErrRefundDeadlinePassed):
+			writeError(w, http.StatusBadRequest, "Pengajuan refund ditolak: batas waktu pengajuan refund maksimal H-1 sebelum event dimulai.")
 		case errors.Is(err, domain.ErrTicketAlreadyAdmitted):
 			writeError(w, http.StatusConflict, err.Error())
 		default:
@@ -170,7 +217,7 @@ func (h *OrdersHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "refund_requested"})
 }
 
-// POST /api/v1/orders/{orderID}/refund/approve — ORGANIZER approve
+// POST /api/v1/orders/{orderID}/refund/approve — ORGANIZER approve (Tahap 1 -> diteruskan ke Admin)
 func (h *OrdersHandler) ApproveRefund(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "orderID")
 
@@ -187,7 +234,49 @@ func (h *OrdersHandler) ApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "refunded"})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "organizer_approved",
+		"message": "Refund telah disetujui organizer dan diteruskan ke Admin untuk final approval.",
+	})
+}
+
+// GET /api/v1/orders/organizer/refunds — ORGANIZER melihat daftar pengajuan refund
+func (h *OrdersHandler) ListOrganizerRefunds(w http.ResponseWriter, r *http.Request) {
+	organizerID := authdelivery.UserIDFromCtx(r.Context())
+	q := r.URL.Query()
+	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
+	offset := (page - 1) * limit
+
+	refunds, total, err := h.orderRepo.GetRefundRequestsByOrganizer(r.Context(), organizerID, limit, offset)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "gagal mengambil daftar refund")
+		return
+	}
+	if refunds == nil {
+		refunds = []*application.RefundRequestItem{}
+	}
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"refunds": refunds,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
+	})
 }
 
 

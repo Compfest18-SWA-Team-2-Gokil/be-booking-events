@@ -33,10 +33,10 @@ type AuditLogEntry struct {
 }
 
 type AdminRepository interface {
-	// ListDisputes mengembalikan order dengan status anomali (PAYMENT_DISCREPANCY, dll).
-	ListDisputes(ctx context.Context) ([]DisputeOrder, error)
+	// ListDisputes mengembalikan order dengan status anomali dengan pagination.
+	ListDisputes(ctx context.Context, limit, offset int) ([]DisputeOrder, int, error)
 	// OverrideOrderStatus mengubah status order secara paksa dan mencatat ke audit_log.
 	OverrideOrderStatus(ctx context.Context, orderID, adminID, newStatus, reason string) error
-	// ListAuditLogs mengambil riwayat immutable audit trail logs.
-	ListAuditLogs(ctx context.Context, limit int) ([]AuditLogEntry, error)
+	// ListAuditLogs mengambil riwayat immutable audit trail logs dengan pagination.
+	ListAuditLogs(ctx context.Context, limit, offset int) ([]AuditLogEntry, int, error)
 }

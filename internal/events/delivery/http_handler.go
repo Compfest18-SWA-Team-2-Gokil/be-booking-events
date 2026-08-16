@@ -118,9 +118,15 @@ func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 func (h *EventsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	page, _ := strconv.Atoi(q.Get("page"))
+	if page < 1 {
+		page = 1
+	}
 	limit, _ := strconv.Atoi(q.Get("limit"))
+	if limit <= 0 || limit > 100 {
+		limit = 10
+	}
 
-	events, err := h.listEventsUC.Execute(r.Context(), application.ListEventsFilter{
+	events, total, err := h.listEventsUC.Execute(r.Context(), application.ListEventsFilter{
 		Category: q.Get("category"),
 		Page:     page,
 		Limit:    limit,
@@ -129,7 +135,24 @@ func (h *EventsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": events})
+	if events == nil {
+		events = []*domain.Event{}
+	}
+
+	totalPages := (total + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"events": events,
+		"pagination": map[string]any{
+			"current_page": page,
+			"per_page":     limit,
+			"total_items":  total,
+			"total_pages":  totalPages,
+		},
+	})
 }
 
 // GET /api/v1/events/{eventID}

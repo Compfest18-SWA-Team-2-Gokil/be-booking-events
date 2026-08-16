@@ -49,6 +49,23 @@ components:
         format: uuid
 
   schemas:
+    Pagination:
+      type: object
+      description: Informasi pagination metadata
+      properties:
+        current_page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 10
+        total_items:
+          type: integer
+          example: 45
+        total_pages:
+          type: integer
+          example: 5
+
     AuditLog:
       type: object
       properties:
@@ -98,9 +115,17 @@ components:
         event_id:
           type: string
           format: uuid
+        event_name:
+          type: string
+          example: "Konser Musik Akustik 2026"
+        unit_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
         status:
           type: string
-          enum: [PENDING, PAYMENT_PENDING, PAID, CANCELLED, REFUND_REQUESTED, REFUNDED, PAYMENT_DISCREPANCY]
+          enum: [PENDING, PAYMENT_PENDING, PAID, CANCELLED, REFUND_REQUESTED, REFUND_ORGANIZER_APPROVED, REFUNDED, PAYMENT_DISCREPANCY]
         total_amount:
           type: integer
           description: Total harga dalam rupiah
@@ -182,7 +207,7 @@ components:
 
     DisputeOrder:
       type: object
-      description: Order dalam status anomali (PAYMENT_DISCREPANCY atau REFUND_REQUESTED)
+      description: Order dalam status anomali (PAYMENT_DISCREPANCY, REFUND_REQUESTED, atau REFUND_ORGANIZER_APPROVED)
       properties:
         order_id:
           type: string
@@ -197,13 +222,40 @@ components:
           format: uuid
         status:
           type: string
-          enum: [PAYMENT_DISCREPANCY, REFUND_REQUESTED]
+          enum: [PAYMENT_DISCREPANCY, REFUND_REQUESTED, REFUND_ORGANIZER_APPROVED]
         total_amount:
           type: integer
         created_at:
           type: string
           format: date-time
         updated_at:
+          type: string
+          format: date-time
+
+    RefundRequestItem:
+      type: object
+      description: Permintaan refund tiket dari pembeli yang masuk ke organizer
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        buyer_id:
+          type: string
+          format: uuid
+        buyer_email:
+          type: string
+        event_id:
+          type: string
+          format: uuid
+        event_name:
+          type: string
+        status:
+          type: string
+          enum: [REFUND_REQUESTED, REFUND_ORGANIZER_APPROVED]
+        total_amount:
+          type: integer
+          description: Total nominal refund dalam rupiah
+        created_at:
           type: string
           format: date-time
 
@@ -1197,6 +1249,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orders/my:
+    get:
+      tags: [Orders]
+      summary: Daftar pesanan tiket milik buyer yang sedang login
+      description: |
+        Mengambil riwayat tiket/pesanan pembeli dari database (server-first).
+        Mengembalikan order list dengan relasi `event_name` dan `unit_ids`.
+        Otomatis membatalkan pesanan yang masa hold tiketnya (>10 menit) telah kedaluwarsa menjadi `CANCELLED`.
+        Hanya BUYER.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar pesanan buyer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  orders:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Order"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orders/organizer/refunds:
+    get:
+      tags: [Orders]
+      summary: Daftar pengajuan refund untuk organizer
+      description: |
+        Mengambil daftar pesanan yang statusnya `REFUND_REQUESTED` atau `REFUND_ORGANIZER_APPROVED`
+        untuk event yang dibuat oleh Organizer yang sedang login.
+        Hanya ORGANIZER.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar pengajuan refund
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refunds:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/RefundRequestItem"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/orders/{orderID}:
     get:
       tags: [Orders]
@@ -1253,7 +1364,7 @@ paths:
                     type: string
                     description: URL halaman pembayaran Xendit
         "400":
-          description: Order tidak dalam status PENDING
+          description: Order tidak dalam status PENDING atau sudah kedaluwarsa (CANCELLED)
           content:
             application/json:
               schema:
@@ -1299,19 +1410,21 @@ paths:
   /api/v1/orders/{orderID}/refund:
     post:
       tags: [Orders]
-      summary: Request refund (BUYER)
+      summary: Request refund (BUYER) - Tahap 1
       description: |
         Buyer mengajukan permintaan refund. Status order menjadi `REFUND_REQUESTED`.
-        Refund baru diproses setelah ORGANIZER approve.
-
-        **Diblokir** jika minimal 1 tiket dalam order sudah di-scan masuk gerbang (status `ADMITTED`).
+        
+        **Aturan Bisnis & Validasi**:
+        1. Pengajuan refund dibatasi maksimal **H-1 (24 jam sebelum event dimulai)**.
+        2. Order harus dalam status `PAID`.
+        3. Tiket belum pernah di-scan masuk gerbang (`ADMITTED`).
       security:
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/orderID"
       responses:
         "200":
-          description: Refund berhasil di-request
+          description: Permintaan refund berhasil diajukan
           content:
             application/json:
               schema:
@@ -1321,13 +1434,13 @@ paths:
                     type: string
                     example: refund_requested
         "400":
-          description: Order belum berstatus PAID
+          description: Order belum PAID atau batas waktu refund (H-1) telah terlewat
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Tiket sudah dipakai masuk gerbang, refund tidak bisa diajukan
+          description: Tiket sudah dipakai masuk gerbang (ADMITTED), refund ditolak
           content:
             application/json:
               schema:
@@ -1336,10 +1449,10 @@ paths:
   /api/v1/orders/{orderID}/refund/approve:
     post:
       tags: [Orders]
-      summary: Approve refund (ORGANIZER)
+      summary: Approve refund (ORGANIZER) - Tahap 2
       description: |
-        Organizer menyetujui refund. Xendit Refund API dipanggil,
-        order menjadi `REFUNDED`, ticket units menjadi `REFUNDED`.
+        Organizer menyetujui refund dari pembeli. Status order berubah menjadi `REFUND_ORGANIZER_APPROVED`
+        dan diteruskan ke Admin untuk final approval / eksekusi pengembalian dana.
         Hanya ORGANIZER.
       security:
         - BearerAuth: []
@@ -1347,7 +1460,7 @@ paths:
         - $ref: "#/components/parameters/orderID"
       responses:
         "200":
-          description: Refund berhasil diproses
+          description: Refund disetujui organizer dan diteruskan ke Admin
           content:
             application/json:
               schema:
@@ -1355,7 +1468,10 @@ paths:
                 properties:
                   status:
                     type: string
-                    example: refunded
+                    example: organizer_approved
+                  message:
+                    type: string
+                    example: Refund telah disetujui organizer dan diteruskan ke Admin untuk final approval.
         "400":
           description: Tidak ada permintaan refund untuk order ini
           content:
