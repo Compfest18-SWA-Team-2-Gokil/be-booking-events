@@ -3,7 +3,6 @@ package delivery_test
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -21,9 +20,11 @@ import (
 // === FAKE IMPLEMENTATIONS UNTUK TESTING HTTP HANDLERS ===
 
 type fakeOrderRepository struct {
-	orders   map[string]*domain.Order
-	payments map[string]*domain.Payment
-	emails   map[string]string
+	orders       map[string]*domain.Order
+	payments     map[string]*domain.Payment
+	emails       map[string]string
+	hasAdmitted  bool
+	lostSeatFail bool
 }
 
 func newFakeOrderRepository() *fakeOrderRepository {
@@ -66,6 +67,17 @@ func (r *fakeOrderRepository) UpdateOrderStatus(ctx context.Context, orderID str
 	}
 	o.Status = status
 	return nil
+}
+
+func (r *fakeOrderRepository) ConfirmOrderPayment(ctx context.Context, orderID string) error {
+	if r.lostSeatFail {
+		return domain.ErrLostSeat
+	}
+	return r.UpdateOrderStatus(ctx, orderID, domain.OrderStatusPaid)
+}
+
+func (r *fakeOrderRepository) HasAdmittedUnits(ctx context.Context, orderID string) (bool, error) {
+	return r.hasAdmitted, nil
 }
 
 func (r *fakeOrderRepository) CreatePayment(ctx context.Context, p *domain.Payment) error {
@@ -135,7 +147,7 @@ func (m *mockTokenProvider) Verify(token string) (string, string, error) {
 
 func setupTestRouter(handler *delivery.OrdersHandler, tokenProvider *mockTokenProvider) http.Handler {
 	r := chi.NewRouter()
-	authMiddleware := authdelivery.AuthMiddleware(tokenProvider)
+	authMiddleware := authdelivery.AuthMiddleware(tokenProvider, nil)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/payments/webhook/xendit", handler.XenditWebhook)
@@ -293,7 +305,7 @@ func TestOrdersHandler_XenditWebhook(t *testing.T) {
 		Status:          domain.PaymentStatusPending,
 	}
 
-	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(repo)
+	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{})
 	callbackToken := "supersecret"
 	handler := delivery.NewOrdersHandler(nil, nil, confirmPayUC, nil, nil, nil, callbackToken)
 	router := setupTestRouter(handler, &mockTokenProvider{})
