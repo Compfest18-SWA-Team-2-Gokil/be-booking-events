@@ -1,0 +1,50 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Hanya deploy setelah CI lulus
+    needs: []
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w" -o be-booking-events ./cmd/server
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.APP_DIR || '/opt/be-booking-events' }}
+
+            echo "=== Pull latest code ==="
+            git pull origin main
+
+            echo "=== Build binary di server ==="
+            CGO_ENABLED=0 go build -ldflags="-s -w" -o be-booking-events ./cmd/server
+
+            echo "=== Restart service ==="
+            sudo systemctl restart be-booking-events
+
+            echo "=== Health check ==="
+            sleep 3
+            curl -sf http://localhost:8080/docs > /dev/null && echo "Server OK" || echo "Health check failed"
