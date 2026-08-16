@@ -23,7 +23,7 @@ func (r *PostgresAdminRepository) ListDisputes(ctx context.Context) ([]applicati
 		SELECT o.id, o.buyer_id, u.email, o.event_id, o.status, o.total_amount, o.created_at, o.updated_at
 		FROM orders o
 		JOIN users u ON u.id = o.buyer_id
-		WHERE o.status IN ('PAYMENT_DISCREPANCY', 'REFUND_REQUESTED')
+		WHERE o.status IN ('PAYMENT_DISCREPANCY', 'REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
 		ORDER BY o.updated_at DESC
 	`)
 	if err != nil {
@@ -59,6 +59,10 @@ func (r *PostgresAdminRepository) OverrideOrderStatus(ctx context.Context, order
 		UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2
 	`, newStatus, orderID); err != nil {
 		return fmt.Errorf("update order: %w", err)
+	}
+
+	if newStatus == "REFUNDED" {
+		_, _ = tx.Exec(ctx, `UPDATE ticket_units SET status = 'REFUNDED', updated_at = NOW() WHERE order_id = $1`, orderID)
 	}
 
 	// Audit log wajib — override admin harus traceable.

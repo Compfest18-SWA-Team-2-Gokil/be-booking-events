@@ -155,11 +155,8 @@ func TestApproveRefundUseCase_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if repo.orders["order-1"].Status != domain.OrderStatusRefunded {
-		t.Errorf("status = %s, want REFUNDED", repo.orders["order-1"].Status)
-	}
-	if repo.payments["order-1"].XenditRefundID == "" {
-		t.Error("xendit_refund_id tidak tersimpan")
+	if repo.orders["order-1"].Status != domain.OrderStatusRefundOrganizerApproved {
+		t.Errorf("status = %s, want REFUND_ORGANIZER_APPROVED", repo.orders["order-1"].Status)
 	}
 }
 

@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
@@ -72,17 +73,31 @@ func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, even
 		return nil, fmt.Errorf("link units: %w", err)
 	}
 
+	order.UnitIDs = unitIDs
 	return order, tx.Commit(ctx)
 }
 
 func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) (*domain.Order, error) {
 	o := &domain.Order{}
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, buyer_id, event_id, status, total_amount, created_at, updated_at
-		FROM orders WHERE id = $1
+		SELECT 
+			o.id, 
+			o.buyer_id, 
+			o.event_id, 
+			COALESCE(e.name, '') as event_name,
+			o.status, 
+			o.total_amount, 
+			COALESCE(array_agg(tu.id::text) FILTER (WHERE tu.id IS NOT NULL), '{}') as unit_ids,
+			o.created_at, 
+			o.updated_at
+		FROM orders o
+		LEFT JOIN events e ON e.id = o.event_id
+		LEFT JOIN ticket_units tu ON tu.order_id = o.id
+		WHERE o.id = $1
+		GROUP BY o.id, e.name
 	`, orderID).Scan(
-		&o.ID, &o.BuyerID, &o.EventID, &o.Status,
-		&o.TotalAmount, &o.CreatedAt, &o.UpdatedAt,
+		&o.ID, &o.BuyerID, &o.EventID, &o.EventName, &o.Status,
+		&o.TotalAmount, &o.UnitIDs, &o.CreatedAt, &o.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, domain.ErrOrderNotFound
@@ -91,6 +106,59 @@ func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) 
 		return nil, fmt.Errorf("get order: %w", err)
 	}
 	return o, nil
+}
+
+// GetOrdersByBuyer mengembalikan semua order milik buyer, diurutkan paling baru beserta unit_ids dan nama event.
+func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID string) ([]*domain.Order, error) {
+	// Auto-cancel order PENDING / PAYMENT_PENDING yang sudah lewat batas waktu (>= 10 menit atau yang tidak memiliki unit HELD lagi)
+	_, _ = r.pool.Exec(ctx, `
+		UPDATE orders
+		SET status = 'CANCELLED', updated_at = NOW()
+		WHERE buyer_id = $1
+		  AND status IN ('PENDING', 'PAYMENT_PENDING')
+		  AND (
+		      created_at < NOW() - INTERVAL '10 minutes'
+		      OR NOT EXISTS (
+		          SELECT 1 FROM ticket_units WHERE order_id = orders.id AND status = 'HELD'
+		      )
+		  )
+	`, buyerID)
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT 
+			o.id, 
+			o.buyer_id, 
+			o.event_id, 
+			COALESCE(e.name, '') as event_name,
+			o.status, 
+			o.total_amount, 
+			COALESCE(array_agg(tu.id::text) FILTER (WHERE tu.id IS NOT NULL), '{}') as unit_ids,
+			o.created_at, 
+			o.updated_at
+		FROM orders o
+		LEFT JOIN events e ON e.id = o.event_id
+		LEFT JOIN ticket_units tu ON tu.order_id = o.id
+		WHERE o.buyer_id = $1
+		GROUP BY o.id, e.name
+		ORDER BY o.created_at DESC
+	`, buyerID)
+	if err != nil {
+		return nil, fmt.Errorf("get orders by buyer: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []*domain.Order
+	for rows.Next() {
+		o := &domain.Order{}
+		if err := rows.Scan(
+			&o.ID, &o.BuyerID, &o.EventID, &o.EventName, &o.Status,
+			&o.TotalAmount, &o.UnitIDs, &o.CreatedAt, &o.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, rows.Err()
 }
 
 // ConfirmOrderPayment atomik: update ticket_units HELD→CONFIRMED dan order→PAID.
@@ -253,9 +321,62 @@ func (r *PostgresOrderRepository) GetBuyerEmail(ctx context.Context, buyerID str
 	return email, err
 }
 
+func (r *PostgresOrderRepository) GetEventDate(ctx context.Context, eventID string) (time.Time, error) {
+	var eventDate time.Time
+	err := r.pool.QueryRow(ctx, `SELECT date FROM events WHERE id = $1`, eventID).Scan(&eventDate)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return eventDate, nil
+}
+
+func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Context, organizerID string) ([]*application.RefundRequestItem, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT 
+			o.id,
+			o.buyer_id,
+			u.email as buyer_email,
+			o.event_id,
+			e.name as event_name,
+			o.status,
+			o.total_amount,
+			o.created_at
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		JOIN users u ON u.id = o.buyer_id
+		WHERE e.organizer_id = $1
+		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
+		ORDER BY o.updated_at DESC
+	`, organizerID)
+	if err != nil {
+		return nil, fmt.Errorf("get refund requests by organizer: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*application.RefundRequestItem
+	for rows.Next() {
+		item := &application.RefundRequestItem{}
+		if err := rows.Scan(
+			&item.OrderID,
+			&item.BuyerID,
+			&item.BuyerEmail,
+			&item.EventID,
+			&item.EventName,
+			&item.Status,
+			&item.TotalAmount,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		list = append(list, item)
+	}
+	return list, rows.Err()
+}
+
 func nullableStr(s string) any {
 	if s == "" {
 		return nil
 	}
 	return s
 }
+

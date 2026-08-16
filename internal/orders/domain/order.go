@@ -8,11 +8,12 @@ type PaymentStatus string
 const (
 	OrderStatusPending              OrderStatus = "PENDING"
 	OrderStatusPaymentPending       OrderStatus = "PAYMENT_PENDING"
-	OrderStatusPaid                 OrderStatus = "PAID"
-	OrderStatusCancelled            OrderStatus = "CANCELLED"
-	OrderStatusRefundRequested      OrderStatus = "REFUND_REQUESTED"
-	OrderStatusRefunded             OrderStatus = "REFUNDED"
-	OrderStatusPaymentDiscrepancy   OrderStatus = "PAYMENT_DISCREPANCY"
+	OrderStatusPaid                     OrderStatus = "PAID"
+	OrderStatusCancelled                OrderStatus = "CANCELLED"
+	OrderStatusRefundRequested          OrderStatus = "REFUND_REQUESTED"
+	OrderStatusRefundOrganizerApproved  OrderStatus = "REFUND_ORGANIZER_APPROVED"
+	OrderStatusRefunded                 OrderStatus = "REFUNDED"
+	OrderStatusPaymentDiscrepancy       OrderStatus = "PAYMENT_DISCREPANCY"
 
 	PaymentStatusPending  PaymentStatus = "PENDING"
 	PaymentStatusSuccess  PaymentStatus = "SUCCESS"
@@ -24,8 +25,10 @@ type Order struct {
 	ID          string      `json:"id"`
 	BuyerID     string      `json:"buyer_id"`
 	EventID     string      `json:"event_id"`
+	EventName   string      `json:"event_name,omitempty"`
 	Status      OrderStatus `json:"status"`
 	TotalAmount int64       `json:"total_amount"`
+	UnitIDs     []string    `json:"unit_ids,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
 }

@@ -24,3 +24,8 @@ func (uc *GetOrderUseCase) Execute(ctx context.Context, orderID, buyerID string)
 	}
 	return order, nil
 }
+
+// ExecuteByBuyer mengambil seluruh riwayat order milik buyer.
+func (uc *GetOrderUseCase) ExecuteByBuyer(ctx context.Context, buyerID string) ([]*domain.Order, error) {
+	return uc.repo.GetOrdersByBuyer(ctx, buyerID)
+}

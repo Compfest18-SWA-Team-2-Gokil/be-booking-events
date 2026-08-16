@@ -13,12 +13,13 @@ import (
 )
 
 type OrdersHandler struct {
-	createOrderUC    *application.CreateOrderUseCase
-	initiatePayUC    *application.InitiatePaymentUseCase
-	confirmPayUC     *application.ConfirmPaymentUseCase
-	requestRefundUC  *application.RequestRefundUseCase
-	approveRefundUC  *application.ApproveRefundUseCase
-	getOrderUC       *application.GetOrderUseCase
+	createOrderUC       *application.CreateOrderUseCase
+	initiatePayUC       *application.InitiatePaymentUseCase
+	confirmPayUC        *application.ConfirmPaymentUseCase
+	requestRefundUC     *application.RequestRefundUseCase
+	approveRefundUC     *application.ApproveRefundUseCase
+	getOrderUC          *application.GetOrderUseCase
+	orderRepo           application.OrderRepository
 	xenditCallbackToken string
 }
 
@@ -29,6 +30,7 @@ func NewOrdersHandler(
 	requestRefundUC *application.RequestRefundUseCase,
 	approveRefundUC *application.ApproveRefundUseCase,
 	getOrderUC *application.GetOrderUseCase,
+	orderRepo application.OrderRepository,
 	xenditCallbackToken string,
 ) *OrdersHandler {
 	return &OrdersHandler{
@@ -38,6 +40,7 @@ func NewOrdersHandler(
 		requestRefundUC:     requestRefundUC,
 		approveRefundUC:     approveRefundUC,
 		getOrderUC:          getOrderUC,
+		orderRepo:           orderRepo,
 		xenditCallbackToken: xenditCallbackToken,
 	}
 }
@@ -89,6 +92,21 @@ func (h *OrdersHandler) GetOrder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, order)
 }
 
+// GET /api/v1/orders/my — semua order milik buyer yang sedang login
+func (h *OrdersHandler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
+	buyerID := authdelivery.UserIDFromCtx(r.Context())
+
+	orders, err := h.getOrderUC.ExecuteByBuyer(r.Context(), buyerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "gagal mengambil riwayat pesanan")
+		return
+	}
+	if orders == nil {
+		orders = []*domain.Order{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"orders": orders})
+}
+
 // POST /api/v1/orders/{orderID}/pay
 func (h *OrdersHandler) InitiatePayment(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "orderID")
@@ -99,10 +117,12 @@ func (h *OrdersHandler) InitiatePayment(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case errors.Is(err, domain.ErrOrderNotFound):
 			writeError(w, http.StatusNotFound, "order tidak ditemukan")
+		case errors.Is(err, domain.ErrOrderCancelled):
+			writeError(w, http.StatusBadRequest, "Batas waktu pembayaran telah habis. Pesanan telah dibatalkan otomatis.")
 		case errors.Is(err, domain.ErrOrderNotPending):
-			writeError(w, http.StatusBadRequest, "order tidak bisa dibayar")
+			writeError(w, http.StatusBadRequest, "order tidak dalam status yang bisa dibayar")
 		default:
-			writeError(w, http.StatusInternalServerError, "gagal membuat invoice")
+			writeError(w, http.StatusInternalServerError, "gagal membuat invoice pembayaran")
 		}
 		return
 	}
@@ -159,6 +179,8 @@ func (h *OrdersHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "order tidak ditemukan")
 		case errors.Is(err, domain.ErrOrderNotPaid):
 			writeError(w, http.StatusBadRequest, "hanya order yang sudah dibayar bisa direfund")
+		case errors.Is(err, domain.ErrRefundDeadlinePassed):
+			writeError(w, http.StatusBadRequest, "Pengajuan refund ditolak: batas waktu pengajuan refund maksimal H-1 sebelum event dimulai.")
 		case errors.Is(err, domain.ErrTicketAlreadyAdmitted):
 			writeError(w, http.StatusConflict, err.Error())
 		default:
@@ -170,7 +192,7 @@ func (h *OrdersHandler) RequestRefund(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "refund_requested"})
 }
 
-// POST /api/v1/orders/{orderID}/refund/approve — ORGANIZER approve
+// POST /api/v1/orders/{orderID}/refund/approve — ORGANIZER approve (Tahap 1 -> diteruskan ke Admin)
 func (h *OrdersHandler) ApproveRefund(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "orderID")
 
@@ -187,7 +209,26 @@ func (h *OrdersHandler) ApproveRefund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "refunded"})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":  "organizer_approved",
+		"message": "Refund telah disetujui organizer dan diteruskan ke Admin untuk final approval.",
+	})
+}
+
+// GET /api/v1/orders/organizer/refunds — ORGANIZER melihat daftar pengajuan refund
+func (h *OrdersHandler) ListOrganizerRefunds(w http.ResponseWriter, r *http.Request) {
+	organizerID := authdelivery.UserIDFromCtx(r.Context())
+
+	refunds, err := h.orderRepo.GetRefundRequestsByOrganizer(r.Context(), organizerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "gagal mengambil daftar refund")
+		return
+	}
+	if refunds == nil {
+		refunds = []*application.RefundRequestItem{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"refunds": refunds})
 }
 
 

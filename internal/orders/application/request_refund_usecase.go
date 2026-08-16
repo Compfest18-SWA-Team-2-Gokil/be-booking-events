@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"time"
 
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
@@ -26,6 +27,15 @@ func (uc *RequestRefundUseCase) Execute(ctx context.Context, orderID, buyerID st
 
 	if order.Status != domain.OrderStatusPaid {
 		return domain.ErrOrderNotPaid
+	}
+
+	// Validasi H-1: Pengajuan refund maksimal H-1 (24 jam) sebelum event dimulai.
+	eventDate, err := uc.repo.GetEventDate(ctx, order.EventID)
+	if err == nil && !eventDate.IsZero() {
+		refundDeadline := eventDate.Add(-24 * time.Hour)
+		if time.Now().After(refundDeadline) {
+			return domain.ErrRefundDeadlinePassed
+		}
 	}
 
 	// PRD-09 Status Blocker: tolak refund jika ada tiket yang sudah di-scan gerbang.
