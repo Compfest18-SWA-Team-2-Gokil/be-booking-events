@@ -49,6 +49,43 @@ components:
         format: uuid
 
   schemas:
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+        actor_email:
+          type: string
+          example: "admin@compfest.id"
+        actor_role:
+          type: string
+          example: "ADMIN"
+        entity_type:
+          type: string
+          example: "order"
+        entity_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          example: "ADMIN_OVERRIDE"
+        from_status:
+          type: string
+          example: "PAYMENT_DISCREPANCY"
+        to_status:
+          type: string
+          example: "CANCELLED"
+        reason:
+          type: string
+          example: "Kompensasi kendala payment gateway"
+        created_at:
+          type: string
+          format: date-time
+
     Order:
       type: object
       properties:
@@ -447,6 +484,27 @@ paths:
                     items:
                       $ref: "#/components/schemas/Event"
 
+  /api/v1/events/{eventID}:
+    get:
+      tags: [Events]
+      summary: Detail event berdasarkan ID
+      description: Endpoint untuk mengambil detail satu event spesifik berdasarkan eventID.
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      responses:
+        "200":
+          description: Data detail event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/events/{eventID}/image:
     post:
       tags: [Events]
@@ -454,7 +512,7 @@ paths:
       description: |
         Upload gambar untuk event. Format yang didukung: JPEG, PNG, WebP.
         Ukuran maksimal 5MB. File disimpan di MinIO object storage dengan public-read access.
-        Hanya ORGANIZER pemilik event.
+        Hanya ORGANIZER dan ADMIN.
       security:
         - BearerAuth: []
       parameters:
@@ -1036,6 +1094,49 @@ paths:
                 $ref: "#/components/schemas/Error"
         "500":
           description: Order tidak ditemukan atau gagal update
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/admin/audit-logs:
+    get:
+      tags: [Admin]
+      summary: View immutable audit trail logs (ADMIN only)
+      description: Mengambil catatan permanen audit trail log mutasi status tiket, order override, dan tindakan admin.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            description: Batas jumlah log yang diambil
+      responses:
+        "200":
+          description: Daftar audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                    example: 2
+                  audit_logs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AuditLog"
+        "401":
+          description: Token tidak valid atau tidak disertakan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan ADMIN
           content:
             application/json:
               schema:
