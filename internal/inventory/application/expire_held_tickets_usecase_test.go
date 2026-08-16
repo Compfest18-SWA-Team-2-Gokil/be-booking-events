@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 )
 
 func TestExpireHeldTicketsUseCase_Execute_ReleasesExpiredUnits(t *testing.T) {

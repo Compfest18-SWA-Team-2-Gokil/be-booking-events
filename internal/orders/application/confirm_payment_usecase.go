@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type ConfirmPaymentUseCase struct {

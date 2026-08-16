@@ -6,9 +6,9 @@ import (
 	"errors"
 	"net/http"
 
-	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
-	"github.com/ebk-tech/be-booking-events/internal/orders/application"
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 	"github.com/go-chi/chi/v5"
 )
 

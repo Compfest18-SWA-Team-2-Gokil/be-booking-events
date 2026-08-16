@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/auth/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/domain"
 )
 
 type RegisterUseCase struct {

@@ -3,14 +3,14 @@ package routes
 import (
 	"net/http"
 
-	admindelivery "github.com/ebk-tech/be-booking-events/internal/admin/delivery"
-	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
-	checkindelivery "github.com/ebk-tech/be-booking-events/internal/checkin/delivery"
-	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
-	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
-	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
-	ordersdelivery "github.com/ebk-tech/be-booking-events/internal/orders/delivery"
-	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
+	admindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/delivery"
+	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
+	checkindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/delivery"
+	dashboarddelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/delivery"
+	eventsdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/delivery"
+	inventorydelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/delivery"
+	ordersdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/delivery"
+	queuedelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/delivery"
 	"github.com/go-chi/chi/v5"
 )
 

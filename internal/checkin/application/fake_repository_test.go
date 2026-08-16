@@ -3,7 +3,7 @@ package application_test
 import (
 	"context"
 
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 )
 
 type fakeCheckinRepo struct {

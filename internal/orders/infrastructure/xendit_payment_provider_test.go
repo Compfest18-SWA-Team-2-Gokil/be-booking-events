@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
 )
 
 func TestXenditPaymentProvider_CreateInvoice_Success(t *testing.T) {

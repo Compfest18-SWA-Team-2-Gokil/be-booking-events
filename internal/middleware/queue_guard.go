@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
-	queuedomain "github.com/ebk-tech/be-booking-events/internal/queue/domain"
+	queueapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
+	queuedomain "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/domain"
 )
 
 // QueueTokenGuard memvalidasi X-Queue-Token jika header dikirim.

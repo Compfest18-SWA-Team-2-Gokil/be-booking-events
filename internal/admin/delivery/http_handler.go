@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"strconv"
 
-	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
-	"github.com/ebk-tech/be-booking-events/internal/admin/application"
+	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/application"
 	"github.com/go-chi/chi/v5"
 )
 

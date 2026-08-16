@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 )
 
 type IssueTicketUseCase struct {

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 )
 
 // fakeRepo adalah implementasi in-memory dari TicketUnitRepository untuk unit test use case.

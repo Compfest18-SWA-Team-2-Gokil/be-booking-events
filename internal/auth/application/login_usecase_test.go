@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ebk-tech/be-booking-events/internal/auth/application"
-	"github.com/ebk-tech/be-booking-events/internal/auth/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/domain"
 )
 
 func seedUser(repo *fakeUserRepo, email, name string, role domain.Role) {

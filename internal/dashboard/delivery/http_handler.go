@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/ebk-tech/be-booking-events/internal/dashboard/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/application"
 	"github.com/go-chi/chi/v5"
 )
 

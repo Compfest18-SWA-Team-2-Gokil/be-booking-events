@@ -1,7 +1,7 @@
 package routes
 
 import (
-	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
+	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	"github.com/go-chi/chi/v5"
 )
 

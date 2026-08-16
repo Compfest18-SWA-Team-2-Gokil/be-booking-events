@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/appconfig"
-	"github.com/ebk-tech/be-booking-events/internal/auth/application"
-	"github.com/ebk-tech/be-booking-events/internal/auth/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/appconfig"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/domain"
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 )

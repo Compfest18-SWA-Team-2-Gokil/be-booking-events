@@ -1,7 +1,7 @@
 package routes
 
 import (
-	ordersdelivery "github.com/ebk-tech/be-booking-events/internal/orders/delivery"
+	ordersdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/delivery"
 	"github.com/go-chi/chi/v5"
 )
 

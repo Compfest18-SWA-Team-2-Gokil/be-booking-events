@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
-	"github.com/ebk-tech/be-booking-events/internal/inventory/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
