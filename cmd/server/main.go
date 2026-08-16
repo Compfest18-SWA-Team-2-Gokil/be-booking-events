@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	adminapp "github.com/ebk-tech/be-booking-events/internal/admin/application"
 	admindelivery "github.com/ebk-tech/be-booking-events/internal/admin/delivery"
@@ -63,13 +64,29 @@ func main() {
 	queueSecret := mustEnv("QUEUE_SECRET_KEY")
 	redisURL := mustEnv("REDIS_URL")
 
-	// --- Postgres ---
+	// --- Postgres connection pool ---
+	// Baca MAX_DB_CONNS dari env agar bisa disesuaikan per environment:
+	//   - Local dev      : 50 (default)
+	//   - Railway hobby  : 10 (Railway PgBouncer juga nge-pool di atasnya)
+	//   - Railway pro    : 20-30
+	maxConns := int32(50)
+	if v := os.Getenv("MAX_DB_CONNS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 32); err == nil && n > 0 {
+			maxConns = int32(n)
+		}
+	}
+
 	poolCfg, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
 		slog.Error("failed to parse database URL", "err", err)
 		os.Exit(1)
 	}
-	poolCfg.MaxConns = 50 // cukup untuk 1000 concurrent req (DB bottleneck di lock, bukan koneksi)
+	poolCfg.MaxConns = maxConns
+	poolCfg.MinConns = 2                                    // selalu ada 2 koneksi siap
+	poolCfg.MaxConnLifetime = 30 * time.Minute              // rotasi koneksi tiap 30 menit
+	poolCfg.MaxConnIdleTime = 5 * time.Minute               // tutup koneksi idle > 5 menit
+	poolCfg.HealthCheckPeriod = 1 * time.Minute             // ping koneksi idle tiap 1 menit
+
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		slog.Error("failed to connect to database", "err", err)
@@ -81,6 +98,7 @@ func main() {
 		slog.Error("database ping failed", "err", err)
 		os.Exit(1)
 	}
+	slog.Info("database pool ready", "max_conns", maxConns)
 
 	// --- Run Auto-Migration ---
 	slog.Info("running database auto-migration...")
