@@ -46,11 +46,13 @@ func AuthMiddleware(tokenProvider application.TokenProvider, redisClient *redis.
 				return
 			}
 
-			// Cek apakah token sudah di-logout (ada di Redis blocklist).
-			blocklisted, _ := redisClient.Exists(r.Context(), "jwt_blocklist:"+tokenStr).Result()
-			if blocklisted > 0 {
-				writeError(w, http.StatusUnauthorized, "token sudah tidak valid, silakan login kembali")
-				return
+			// Cek apakah token sudah di-logout (ada di Redis blocklist jika Redis tersedia).
+			if redisClient != nil {
+				blocklisted, _ := redisClient.Exists(r.Context(), "jwt_blocklist:"+tokenStr).Result()
+				if blocklisted > 0 {
+					writeError(w, http.StatusUnauthorized, "token sudah tidak valid, silakan login kembali")
+					return
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), ContextKeyUserID, userID)
