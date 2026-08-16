@@ -49,6 +49,23 @@ components:
         format: uuid
 
   schemas:
+    Pagination:
+      type: object
+      description: Informasi pagination metadata
+      properties:
+        current_page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 10
+        total_items:
+          type: integer
+          example: 45
+        total_pages:
+          type: integer
+          example: 5
+
     AuditLog:
       type: object
       properties:

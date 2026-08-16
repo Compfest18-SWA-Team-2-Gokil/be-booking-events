@@ -37,12 +37,12 @@ func (r *fakeEventRepo) GetEvent(_ context.Context, id string) (*domain.Event, e
 	return e, nil
 }
 
-func (r *fakeEventRepo) ListEvents(_ context.Context, _ application.ListEventsFilter) ([]*domain.Event, error) {
+func (r *fakeEventRepo) ListEvents(_ context.Context, _ application.ListEventsFilter) ([]*domain.Event, int, error) {
 	result := make([]*domain.Event, 0, len(r.events))
 	for _, e := range r.events {
 		result = append(result, e)
 	}
-	return result, nil
+	return result, len(result), nil
 }
 
 func (r *fakeEventRepo) UpdateEvent(_ context.Context, e *domain.Event) error {

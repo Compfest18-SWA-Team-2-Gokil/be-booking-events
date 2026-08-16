@@ -109,8 +109,9 @@ func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) 
 }
 
 // GetOrdersByBuyer mengembalikan semua order milik buyer, diurutkan paling baru beserta unit_ids dan nama event.
-func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID string) ([]*domain.Order, error) {
-	// Auto-cancel order PENDING / PAYMENT_PENDING yang sudah lewat batas waktu (>= 10 menit atau yang tidak memiliki unit HELD lagi)
+func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID string, limit, offset int) ([]*domain.Order, int, error) {
+	// Auto-cancel: jika status masih PENDING/PAYMENT_PENDING tapi dibuat lebih dari 10 menit lalu
+	// atau tidak punya tiket status HELD lagi, otomatis batalkan jadi CANCELLED.
 	_, _ = r.pool.Exec(ctx, `
 		UPDATE orders
 		SET status = 'CANCELLED', updated_at = NOW()
@@ -123,6 +124,16 @@ func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID 
 		      )
 		  )
 	`, buyerID)
+
+	var total int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM orders WHERE buyer_id = $1`, buyerID).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count orders by buyer: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
 
 	rows, err := r.pool.Query(ctx, `
 		SELECT 
@@ -141,9 +152,10 @@ func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID 
 		WHERE o.buyer_id = $1
 		GROUP BY o.id, e.name
 		ORDER BY o.created_at DESC
-	`, buyerID)
+		LIMIT $2 OFFSET $3
+	`, buyerID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("get orders by buyer: %w", err)
+		return nil, 0, fmt.Errorf("get orders by buyer: %w", err)
 	}
 	defer rows.Close()
 
@@ -154,11 +166,11 @@ func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID 
 			&o.ID, &o.BuyerID, &o.EventID, &o.EventName, &o.Status,
 			&o.TotalAmount, &o.UnitIDs, &o.CreatedAt, &o.UpdatedAt,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		orders = append(orders, o)
 	}
-	return orders, rows.Err()
+	return orders, total, rows.Err()
 }
 
 // ConfirmOrderPayment atomik: update ticket_units HELD→CONFIRMED dan order→PAID.
@@ -330,7 +342,23 @@ func (r *PostgresOrderRepository) GetEventDate(ctx context.Context, eventID stri
 	return eventDate, nil
 }
 
-func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Context, organizerID string) ([]*application.RefundRequestItem, error) {
+func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Context, organizerID string, limit, offset int) ([]*application.RefundRequestItem, int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		WHERE e.organizer_id = $1
+		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
+	`, organizerID).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count refund requests by organizer: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
 	rows, err := r.pool.Query(ctx, `
 		SELECT 
 			o.id,
@@ -347,9 +375,10 @@ func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Conte
 		WHERE e.organizer_id = $1
 		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
 		ORDER BY o.updated_at DESC
-	`, organizerID)
+		LIMIT $2 OFFSET $3
+	`, organizerID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("get refund requests by organizer: %w", err)
+		return nil, 0, fmt.Errorf("get refund requests by organizer: %w", err)
 	}
 	defer rows.Close()
 
@@ -366,11 +395,11 @@ func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Conte
 			&item.TotalAmount,
 			&item.CreatedAt,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		list = append(list, item)
 	}
-	return list, rows.Err()
+	return list, total, rows.Err()
 }
 
 func nullableStr(s string) any {
