@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
 	"github.com/ebk-tech/be-booking-events/internal/admin/application"
@@ -11,12 +12,21 @@ import (
 )
 
 type AdminHandler struct {
-	listDisputesUC  *application.ListDisputesUseCase
-	overrideOrderUC *application.OverrideOrderUseCase
+	listDisputesUC   *application.ListDisputesUseCase
+	overrideOrderUC  *application.OverrideOrderUseCase
+	listAuditLogsUC  *application.ListAuditLogsUseCase
 }
 
-func NewAdminHandler(listUC *application.ListDisputesUseCase, overrideUC *application.OverrideOrderUseCase) *AdminHandler {
-	return &AdminHandler{listDisputesUC: listUC, overrideOrderUC: overrideUC}
+func NewAdminHandler(
+	listUC *application.ListDisputesUseCase,
+	overrideUC *application.OverrideOrderUseCase,
+	auditUC *application.ListAuditLogsUseCase,
+) *AdminHandler {
+	return &AdminHandler{
+		listDisputesUC:  listUC,
+		overrideOrderUC: overrideUC,
+		listAuditLogsUC: auditUC,
+	}
 }
 
 // GET /api/v1/admin/disputes
@@ -29,7 +39,10 @@ func (h *AdminHandler) ListDisputes(w http.ResponseWriter, r *http.Request) {
 	if disputes == nil {
 		disputes = []application.DisputeOrder{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"disputes": disputes})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":    len(disputes),
+		"disputes": disputes,
+	})
 }
 
 // POST /api/v1/admin/orders/{orderID}/override
@@ -60,6 +73,28 @@ func (h *AdminHandler) OverrideOrder(w http.ResponseWriter, r *http.Request) {
 		"order_id": orderID,
 		"status":   req.Status,
 		"message":  "order berhasil di-override dan tercatat di audit log",
+	})
+}
+
+// GET /api/v1/admin/audit-logs
+func (h *AdminHandler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
+	limitStr := r.URL.Query().Get("limit")
+	limit := 50
+	if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+		limit = l
+	}
+
+	logs, err := h.listAuditLogsUC.Execute(r.Context(), limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "gagal mengambil data audit logs")
+		return
+	}
+	if logs == nil {
+		logs = []application.AuditLogEntry{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":      len(logs),
+		"audit_logs": logs,
 	})
 }
 

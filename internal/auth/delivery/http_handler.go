@@ -114,6 +114,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set HttpOnly Cookie untuk keamanan tingkat tinggi
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    out.Token,
+		Path:     "/",
+		MaxAge:   86400, // 24 jam
+		HttpOnly: true,
+		Secure:   false, // dev mode (HTTP), true di HTTPS prod
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"token": out.Token,
 		"user": userResponse{
@@ -137,17 +148,32 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /api/v1/auth/logout — invalidasi token via Redis blocklist (TTL = 25 jam)
+// POST /api/v1/auth/logout — invalidasi token via Redis blocklist dan hapus cookie
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+	var token string
 	raw := r.Header.Get("Authorization")
-	token := strings.TrimPrefix(raw, "Bearer ")
-	if token == "" {
-		writeError(w, http.StatusBadRequest, "Authorization header wajib diisi")
-		return
+	if strings.HasPrefix(raw, "Bearer ") {
+		token = strings.TrimPrefix(raw, "Bearer ")
+	} else if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+		token = cookie.Value
 	}
-	// Simpan token ke blocklist Redis selama 25 jam (lebih dari TTL JWT 24 jam).
-	key := "jwt_blocklist:" + token
-	h.redis.Set(context.Background(), key, "1", 25*time.Hour)
+
+	if token != "" && h.redis != nil {
+		key := "jwt_blocklist:" + token
+		h.redis.Set(context.Background(), key, "1", 25*time.Hour)
+	}
+
+	// Hapus HttpOnly Cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out"})
 }
 
@@ -190,9 +216,6 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-// writeInternalError menulis 500 response.
-// Jika APP_DEBUG=true, pesan error asli akan ditampilkan untuk memudahkan debugging.
-// Jika APP_DEBUG=false (production), hanya pesan generik yang dikembalikan.
 func writeInternalError(w http.ResponseWriter, err error) {
 	msg := "internal server error"
 	if appconfig.IsDebug() {
