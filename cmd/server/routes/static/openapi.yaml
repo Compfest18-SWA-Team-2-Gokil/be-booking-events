@@ -47,6 +47,13 @@ components:
       schema:
         type: string
         format: uuid
+    unitID:
+      name: unitID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     Pagination:
@@ -557,6 +564,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+    put:
+      tags: [Events]
+      summary: Update detail event
+      description: Hanya ORGANIZER pemilik event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: string
+                date:
+                  type: string
+                  format: date-time
+                location:
+                  type: string
+      responses:
+        "200":
+          description: Event berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "403":
+          description: Bukan pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Events]
+      summary: Hapus event
+      description: Hanya ORGANIZER pemilik event. Event dengan tiket yang sudah terjual tidak dapat dihapus.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      responses:
+        "204":
+          description: Event berhasil dihapus
+        "403":
+          description: Bukan pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Event tidak bisa dihapus karena tiket sudah terjual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/events/{eventID}/image:
     post:
       tags: [Events]
@@ -607,6 +684,62 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/events/{eventID}/ticket-types/{ticketTypeID}:
+    put:
+      tags: [Events]
+      summary: Update tipe tiket
+      description: Hanya ORGANIZER. Mengubah nama, harga, atau total kuota.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - $ref: "#/components/parameters/ticketTypeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: integer
+                total_quota:
+                  type: integer
+      responses:
+        "200":
+          description: Tipe tiket berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketType"
+        "409":
+          description: Harga terkunci (price locked) atau kuota di bawah tiket terjual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Events]
+      summary: Hapus tipe tiket
+      description: Hanya ORGANIZER. Tipe tiket yang sudah memiliki tiket terjual tidak dapat dihapus.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - $ref: "#/components/parameters/ticketTypeID"
+      responses:
+        "204":
+          description: Tipe tiket berhasil dihapus
+        "409":
+          description: Tidak bisa dihapus karena sudah ada tiket terjual
           content:
             application/json:
               schema:
@@ -1151,6 +1284,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/admin/tickets/{unitID}/reassign:
+    post:
+      tags: [Admin]
+      summary: Pindahkan unit tiket ke order lain (Dispute Resolution)
+      description: |
+        Admin dapat memindahkan unit tiket ke order ID lain (misalnya saat terjadi lost seat atau sengketa).
+        Tindakan ini dicatat secara immutable ke dalam audit log.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/unitID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_order_id, reason]
+              properties:
+                target_order_id:
+                  type: string
+                  format: uuid
+                  description: Order ID tujuan pemindahan tiket
+                new_seat_number:
+                  type: string
+                  description: Nomor kursi baru (opsional)
+                reason:
+                  type: string
+                  description: Alasan pemindahan untuk audit trail log
+            example:
+              target_order_id: "550e8400-e29b-41d4-a716-446655440000"
+              reason: "Penyelesaian klaim double booking"
+      responses:
+        "200":
+          description: Unit tiket berhasil dipindahkan dan tercatat di audit log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: unit tiket berhasil dipindahkan dan tercatat di audit log
+        "400":
+          description: Parameter tidak lengkap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/admin/audit-logs:
     get:
       tags: [Admin]
@@ -1284,7 +1473,7 @@ paths:
       tags: [Orders]
       summary: Daftar pengajuan refund untuk organizer
       description: |
-        Mengambil daftar pesanan yang statusnya `REFUND_REQUESTED` atau `REFUND_ORGANIZER_APPROVED`
+        Mengambil daftar riwayat pesanan refund (status `REFUND_REQUESTED`, `REFUND_ORGANIZER_APPROVED`, atau `REFUNDED`)
         untuk event yang dibuat oleh Organizer yang sedang login.
         Hanya ORGANIZER.
       security:
