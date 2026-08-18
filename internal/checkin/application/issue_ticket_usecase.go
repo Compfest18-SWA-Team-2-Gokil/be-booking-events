@@ -18,6 +18,7 @@ func NewIssueTicketUseCase(repo CheckinRepository, signer QRSigner) *IssueTicket
 
 type IssueTicketOutput struct {
 	QRContent string `json:"qr_content"`
+	Status    string `json:"status"`
 }
 
 func (uc *IssueTicketUseCase) Execute(ctx context.Context, ticketUnitID string) (*IssueTicketOutput, error) {
@@ -38,5 +39,8 @@ func (uc *IssueTicketUseCase) Execute(ctx context.Context, ticketUnitID string) 
 		return nil, err
 	}
 
-	return &IssueTicketOutput{QRContent: qr}, nil
+	return &IssueTicketOutput{
+		QRContent: qr,
+		Status:    ticket.Status,
+	}, nil
 }

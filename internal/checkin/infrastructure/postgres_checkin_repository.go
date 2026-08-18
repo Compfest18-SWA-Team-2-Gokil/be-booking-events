@@ -25,11 +25,11 @@ func (r *PostgresCheckinRepository) GetConfirmedUnit(ctx context.Context, ticket
 	var orderID *string
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT tu.id, tu.order_id, tt.event_id::text
+		SELECT tu.id, tu.order_id, tt.event_id::text, tu.status
 		FROM ticket_units tu
 		JOIN ticket_types tt ON tt.id = tu.ticket_type_id
-		WHERE tu.id = $1 AND tu.status = 'CONFIRMED'
-	`, ticketUnitID).Scan(&ticket.ID, &orderID, &ticket.EventID)
+		WHERE tu.id = $1 AND tu.status IN ('CONFIRMED', 'ADMITTED')
+	`, ticketUnitID).Scan(&ticket.ID, &orderID, &ticket.EventID, &ticket.Status)
 
 	if err != nil {
 		return nil, domain.ErrTicketNotConfirmed

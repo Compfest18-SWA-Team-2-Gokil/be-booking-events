@@ -34,6 +34,9 @@ import (
 	ordersapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
 	ordersdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/delivery"
 	ordersinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/infrastructure"
+	promosapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/application"
+	promosdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/delivery"
+	promosinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/infrastructure"
 	queueapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
 	queuedelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/infrastructure"
@@ -235,6 +238,12 @@ func main() {
 		provisionUnitsUC, uploadImageUC,
 	)
 
+	// --- Promos module ---
+	promoRepo := promosinfra.NewPostgresPromoRepository(pool)
+	adminPromosUC := promosapp.NewAdminPromosUseCase(promoRepo)
+	validatePromoUC := promosapp.NewValidatePromoUseCase(promoRepo)
+	promosHandler := promosdelivery.NewPromoHandler(adminPromosUC, validatePromoUC)
+
 	// --- Router ---
 	r := chi.NewRouter()
 
@@ -277,6 +286,7 @@ func main() {
 		Queue:     queueHandler,
 		Events:    eventsHandler,
 		Orders:    ordersHandler,
+		Promos:    promosHandler,
 	})
 
 	// --- HTTP server ---

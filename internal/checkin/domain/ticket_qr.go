@@ -22,4 +22,5 @@ type CheckinTicket struct {
 	ID      string
 	OrderID string
 	EventID string
+	Status  string
 }
