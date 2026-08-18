@@ -3,7 +3,6 @@ package delivery_test
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"net/http"

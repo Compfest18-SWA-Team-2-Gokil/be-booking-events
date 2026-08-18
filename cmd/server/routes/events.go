@@ -3,6 +3,11 @@ package routes
 import "github.com/go-chi/chi/v5"
 
 func registerEvents(r chi.Router, d Deps) {
+	// PUBLIC: tidak perlu authentication
+	r.Get("/api/v1/events", d.Events.ListEvents)
+	r.Get("/api/v1/events/{eventID}", d.Events.GetEvent)
+	r.Get("/api/v1/events/{eventID}/ticket-types", d.Events.ListTicketTypes)
+
 	r.Group(func(r chi.Router) {
 		r.Use(d.AuthMiddleware)
 
@@ -18,9 +23,6 @@ func registerEvents(r chi.Router, d Deps) {
 		r.With(d.RequireOrganizer).Delete("/api/v1/events/{eventID}/ticket-types/{ticketTypeID}", d.Events.DeleteTicketType)
 		r.With(d.RequireOrganizer).Post("/api/v1/events/{eventID}/ticket-types/{ticketTypeID}/provision", d.Events.ProvisionUnits)
 
-		// Public-ish: semua role authenticated bisa lihat events
-		r.Get("/api/v1/events", d.Events.ListEvents)
-		r.Get("/api/v1/events/{eventID}", d.Events.GetEvent)
-		r.Get("/api/v1/events/{eventID}/ticket-types", d.Events.ListTicketTypes)
+		
 	})
 }
