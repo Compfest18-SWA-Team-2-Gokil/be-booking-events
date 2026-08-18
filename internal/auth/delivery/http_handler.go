@@ -59,7 +59,8 @@ type userResponse struct {
 }
 
 type assignGateOpRequest struct {
-	UserID string `json:"user_id"`
+	UserID         string `json:"user_id"`
+	GateOperatorID string `json:"gate_operator_id"`
 }
 
 // POST /api/v1/auth/register
@@ -80,6 +81,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, domain.ErrEmailAlreadyTaken):
 			writeError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, domain.ErrForbiddenRole):
+			writeError(w, http.StatusForbidden, err.Error())
 		case errors.Is(err, domain.ErrPasswordTooShort),
 			errors.Is(err, domain.ErrInvalidEmail),
 			errors.Is(err, domain.ErrNameRequired),
@@ -182,13 +185,22 @@ func (h *AuthHandler) AssignGateOperator(w http.ResponseWriter, r *http.Request)
 	eventID := chi.URLParam(r, "eventID")
 
 	var req assignGateOpRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.UserID == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body tidak valid")
+		return
+	}
+
+	targetUserID := req.UserID
+	if targetUserID == "" {
+		targetUserID = req.GateOperatorID
+	}
+	if targetUserID == "" {
 		writeError(w, http.StatusBadRequest, "user_id wajib diisi")
 		return
 	}
 
 	err := h.assignGateOpUC.Execute(r.Context(), application.AssignGateOperatorInput{
-		GateOperatorUserID: req.UserID,
+		GateOperatorUserID: targetUserID,
 		EventID:            eventID,
 	})
 	if err != nil {

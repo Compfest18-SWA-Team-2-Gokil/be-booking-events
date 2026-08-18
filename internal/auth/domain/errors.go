@@ -10,6 +10,7 @@ var (
 	ErrNameRequired       = errors.New("nama tidak boleh kosong")
 	ErrPasswordTooShort   = errors.New("password minimal 8 karakter")
 	ErrInvalidRole        = errors.New("role tidak valid")
+	ErrForbiddenRole      = errors.New("role ADMIN tidak bisa didaftarkan melalui endpoint publik")
 	ErrNotGateOperator    = errors.New("user yang di-assign bukan GATE_OPERATOR")
 	ErrInvalidToken       = errors.New("token tidak valid atau sudah kadaluarsa")
 )

@@ -28,8 +28,14 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (*d
 		return nil, domain.ErrPasswordTooShort
 	}
 
+	// Security: blokir registrasi langsung sebagai ADMIN dari endpoint publik.
+	// BUYER, ORGANIZER, dan GATE_OPERATOR boleh daftar sendiri.
+	// Role ADMIN hanya bisa dibuat via seed/migration atau endpoint internal.
 	if input.Role == "" {
 		input.Role = domain.RoleBuyer
+	}
+	if input.Role == domain.RoleAdmin {
+		return nil, domain.ErrForbiddenRole
 	}
 
 	user := &domain.User{

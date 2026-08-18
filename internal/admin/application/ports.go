@@ -37,6 +37,8 @@ type AdminRepository interface {
 	ListDisputes(ctx context.Context, limit, offset int) ([]DisputeOrder, int, error)
 	// OverrideOrderStatus mengubah status order secara paksa dan mencatat ke audit_log.
 	OverrideOrderStatus(ctx context.Context, orderID, adminID, newStatus, reason string) error
+	// ReassignTicket memindahkan unit tiket ke order lain dan mencatat ke audit_log.
+	ReassignTicket(ctx context.Context, unitID, adminID, targetOrderID, newSeatNumber, reason string) error
 	// ListAuditLogs mengambil riwayat immutable audit trail logs dengan pagination.
 	ListAuditLogs(ctx context.Context, limit, offset int) ([]AuditLogEntry, int, error)
 }

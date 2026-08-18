@@ -22,7 +22,7 @@ func TestScanTicketUseCase_Execute_Success(t *testing.T) {
 	repo.assignments["gate-op-1:event-1"] = true // gate operator di-assign ke event ini
 
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
-	uc := application.NewScanTicketUseCase(repo, signer)
+	uc := application.NewScanTicketUseCase(repo, signer, nil)
 
 	out, err := uc.Execute(context.Background(), application.ScanTicketInput{
 		QRContent:      "valid.qr",
@@ -45,7 +45,7 @@ func TestScanTicketUseCase_Execute_Success(t *testing.T) {
 
 func TestScanTicketUseCase_Execute_InvalidSignature(t *testing.T) {
 	signer := &fakeSigner{validContent: "valid.qr", verifyErr: domain.ErrInvalidSignature}
-	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer)
+	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer, nil)
 
 	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
 		QRContent: "tampered.qr",
@@ -60,7 +60,7 @@ func TestScanTicketUseCase_Execute_WrongQRContent(t *testing.T) {
 	signer := &fakeSigner{validContent: "valid.qr", payload: &domain.QRPayload{
 		TicketUnitID: "unit-1", EventID: "event-1", IssuedAt: time.Now(),
 	}}
-	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer)
+	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer, nil)
 
 	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
 		QRContent: "wrong.qr",
@@ -78,7 +78,7 @@ func TestScanTicketUseCase_Execute_GateOperatorNotAssigned(t *testing.T) {
 	repo := newFakeCheckinRepo()
 	// assignments kosong → gate operator belum di-assign
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
-	uc := application.NewScanTicketUseCase(repo, signer)
+	uc := application.NewScanTicketUseCase(repo, signer, nil)
 
 	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
 		QRContent: "valid.qr", GateOperatorID: "unassigned-gate-op",
@@ -99,7 +99,7 @@ func TestScanTicketUseCase_Execute_AlreadyAdmitted(t *testing.T) {
 	repo.assignments["gate-op-1:event-1"] = true // gate operator valid
 
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
-	uc := application.NewScanTicketUseCase(repo, signer)
+	uc := application.NewScanTicketUseCase(repo, signer, nil)
 
 	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
 		QRContent: "valid.qr", GateOperatorID: "gate-op-1",
@@ -114,7 +114,7 @@ func TestScanTicketUseCase_Execute_InvalidPayload(t *testing.T) {
 	// Payload dengan TicketUnitID kosong → Validate() gagal (sebelum cek assignment)
 	payload := &domain.QRPayload{EventID: "event-1", IssuedAt: time.Now()}
 	signer := &fakeSigner{validContent: "valid.qr", payload: payload}
-	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer)
+	uc := application.NewScanTicketUseCase(newFakeCheckinRepo(), signer, nil)
 
 	_, err := uc.Execute(context.Background(), application.ScanTicketInput{
 		QRContent: "valid.qr",
