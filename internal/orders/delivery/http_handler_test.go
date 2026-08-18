@@ -35,7 +35,7 @@ func newFakeOrderRepository() *fakeOrderRepository {
 	}
 }
 
-func (r *fakeOrderRepository) CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error) {
+func (r *fakeOrderRepository) CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string, promoCode string) (*domain.Order, error) {
 	if len(unitIDs) == 0 {
 		return nil, domain.ErrNoHeldUnits
 	}

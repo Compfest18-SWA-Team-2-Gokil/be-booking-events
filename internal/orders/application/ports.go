@@ -9,8 +9,8 @@ import (
 
 type OrderRepository interface {
 	// CreateOrder membuat order dan mengaitkan unit_ids ke order dalam satu transaksi.
-	// Menghitung total_amount dari harga ticket_type masing-masing unit.
-	CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error)
+	// Menghitung total_amount dari harga ticket_type masing-masing unit dan memotong promo jika ada.
+	CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string, promoCode string) (*domain.Order, error)
 
 	GetOrder(ctx context.Context, orderID string) (*domain.Order, error)
 	// GetOrdersByBuyer mengambil semua order milik buyer dengan pagination.
