@@ -349,7 +349,7 @@ func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Conte
 		FROM orders o
 		JOIN events e ON e.id = o.event_id
 		WHERE e.organizer_id = $1
-		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
+		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED', 'REFUNDED')
 	`, organizerID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count refund requests by organizer: %w", err)
@@ -373,7 +373,7 @@ func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Conte
 		JOIN events e ON e.id = o.event_id
 		JOIN users u ON u.id = o.buyer_id
 		WHERE e.organizer_id = $1
-		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED')
+		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED', 'REFUNDED')
 		ORDER BY o.updated_at DESC
 		LIMIT $2 OFFSET $3
 	`, organizerID, limit, offset)
