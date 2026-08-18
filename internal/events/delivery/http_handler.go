@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/application"
@@ -55,29 +56,48 @@ func NewEventsHandler(
 }
 
 // POST /api/v1/events
-// Menerima multipart/form-data. Field wajib: name, date, location, category, image.
+// Menerima application/json atau multipart/form-data. Field wajib: name, date, location, category.
 func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
+	organizerID := authdelivery.UserIDFromCtx(r.Context())
+
+	// Dukung request JSON (gambar diunggah secara terpisah via POST /api/v1/events/{id}/image)
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var req struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			Category    string `json:"category"`
+			Date        string `json:"date"`
+			Location    string `json:"location"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "request body tidak valid")
+			return
+		}
+
+		event, err := h.createEventUC.Execute(r.Context(), application.CreateEventInput{
+			OrganizerID: organizerID,
+			Name:        req.Name,
+			Description: req.Description,
+			Category:    req.Category,
+			Date:        req.Date,
+			Location:    req.Location,
+		})
+		if err != nil {
+			writeEventValidationOrServerError(w, err)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, event)
+		return
+	}
+
+	// Dukung multipart/form-data (gambar diunggah bersamaan dengan payload event)
 	r.Body = http.MaxBytesReader(w, r.Body, 6*1024*1024)
 	if err := r.ParseMultipartForm(5 * 1024 * 1024); err != nil {
-		writeError(w, http.StatusBadRequest, "request harus multipart/form-data, file terlalu besar, atau format tidak valid")
+		writeError(w, http.StatusBadRequest, "request harus application/json atau multipart/form-data (maks 5MB)")
 		return
 	}
 
-	// Foto wajib — tolak request sebelum menyentuh DB jika tidak ada.
-	file, header, fileErr := r.FormFile("image")
-	if fileErr != nil {
-		writeError(w, http.StatusBadRequest, "field 'image' wajib diisi (JPEG/PNG/WebP, maks 5MB)")
-		return
-	}
-	defer file.Close()
-
-	buf := make([]byte, header.Size)
-	if _, err := file.Read(buf); err != nil {
-		writeError(w, http.StatusBadRequest, "gagal membaca file gambar")
-		return
-	}
-
-	organizerID := authdelivery.UserIDFromCtx(r.Context())
 	event, err := h.createEventUC.Execute(r.Context(), application.CreateEventInput{
 		OrganizerID: organizerID,
 		Name:        r.FormValue("name"),
@@ -91,26 +111,24 @@ func (h *EventsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upload foto ke MinIO — kalau gagal, hapus event yang baru dibuat agar tidak ada event tanpa foto.
-	out, uploadErr := h.uploadImageUC.Execute(r.Context(), application.UploadEventImageInput{
-		EventID:     event.ID,
-		OrganizerID: organizerID,
-		Data:        buf,
-		ContentType: http.DetectContentType(buf),
-	})
-	if uploadErr != nil {
-		switch {
-		case errors.Is(uploadErr, application.ErrFileTooLarge):
-			writeError(w, http.StatusBadRequest, uploadErr.Error())
-		case errors.Is(uploadErr, application.ErrInvalidFileType):
-			writeError(w, http.StatusBadRequest, uploadErr.Error())
-		default:
-			writeError(w, http.StatusInternalServerError, "gagal upload gambar ke storage")
+	// Cek jika ada foto yang diikutsertakan di form-data
+	file, header, fileErr := r.FormFile("image")
+	if fileErr == nil && file != nil {
+		defer file.Close()
+		buf := make([]byte, header.Size)
+		if _, err := file.Read(buf); err == nil {
+			out, uploadErr := h.uploadImageUC.Execute(r.Context(), application.UploadEventImageInput{
+				EventID:     event.ID,
+				OrganizerID: organizerID,
+				Data:        buf,
+				ContentType: http.DetectContentType(buf),
+			})
+			if uploadErr == nil {
+				event.ImageURL = out.ImageURL
+			}
 		}
-		return
 	}
 
-	event.ImageURL = out.ImageURL
 	writeJSON(w, http.StatusCreated, event)
 }
 

@@ -182,6 +182,24 @@ func (r *PostgresOrderRepository) ConfirmOrderPayment(ctx context.Context, order
 	}
 	defer tx.Rollback(ctx)
 
+	// 1. Kunci baris order dengan SELECT FOR UPDATE untuk mencegah race condition webhook konkuren
+	var currentStatus string
+	err = tx.QueryRow(ctx, `
+		SELECT status FROM orders WHERE id = $1 FOR UPDATE
+	`, orderID).Scan(&currentStatus)
+	if err != nil {
+		return fmt.Errorf("lock order: %w", err)
+	}
+
+	// 2. Idempotency check: jika status sudah PAID, no-op dan return nil
+	if currentStatus == string(domain.OrderStatusPaid) {
+		return nil
+	}
+	if currentStatus == string(domain.OrderStatusPaymentDiscrepancy) {
+		return domain.ErrLostSeat
+	}
+
+	// 3. Update status ticket_units dari HELD ke CONFIRMED
 	tag, err := tx.Exec(ctx, `
 		UPDATE ticket_units SET status = 'CONFIRMED', updated_at = NOW()
 		WHERE order_id = $1 AND status = 'HELD'
