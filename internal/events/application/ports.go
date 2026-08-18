@@ -3,13 +3,13 @@ package application
 import (
 	"context"
 
-	"github.com/ebk-tech/be-booking-events/internal/events/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/domain"
 )
 
 type EventRepository interface {
 	CreateEvent(ctx context.Context, event *domain.Event) error
 	GetEvent(ctx context.Context, eventID string) (*domain.Event, error)
-	ListEvents(ctx context.Context, filter ListEventsFilter) ([]*domain.Event, error)
+	ListEvents(ctx context.Context, filter ListEventsFilter) ([]*domain.Event, int, error)
 	UpdateEvent(ctx context.Context, event *domain.Event) error
 	DeleteEvent(ctx context.Context, eventID string) error
 

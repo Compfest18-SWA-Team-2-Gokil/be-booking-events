@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/application"
 )
 
 // expiryInterval: 30 detik sesuai TDD Bab 4 (active cleanup job).

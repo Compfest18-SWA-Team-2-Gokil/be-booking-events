@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 )
 
 func TestTicketUnit_CanTransitionTo(t *testing.T) {

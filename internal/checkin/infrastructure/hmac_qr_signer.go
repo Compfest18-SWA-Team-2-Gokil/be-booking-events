@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ebk-tech/be-booking-events/internal/checkin/application"
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 )
 
 // HMACQRSigner mengimplementasikan QRSigner dengan HMAC-SHA256.

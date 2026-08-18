@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/events/application"
-	"github.com/ebk-tech/be-booking-events/internal/events/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/domain"
 )
 
 var futureDate = time.Now().Add(30 * 24 * time.Hour).UTC().Format(time.RFC3339)

@@ -6,33 +6,41 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
-
-	authapp "github.com/ebk-tech/be-booking-events/internal/auth/application"
-	authdelivery "github.com/ebk-tech/be-booking-events/internal/auth/delivery"
-	authinfra "github.com/ebk-tech/be-booking-events/internal/auth/infrastructure"
-	checkinapp "github.com/ebk-tech/be-booking-events/internal/checkin/application"
-	checkindelivery "github.com/ebk-tech/be-booking-events/internal/checkin/delivery"
-	checkininfra "github.com/ebk-tech/be-booking-events/internal/checkin/infrastructure"
-	dashboardapp "github.com/ebk-tech/be-booking-events/internal/dashboard/application"
-	dashboarddelivery "github.com/ebk-tech/be-booking-events/internal/dashboard/delivery"
-	dashboardinfra "github.com/ebk-tech/be-booking-events/internal/dashboard/infrastructure"
-	eventsapp "github.com/ebk-tech/be-booking-events/internal/events/application"
-	eventsdelivery "github.com/ebk-tech/be-booking-events/internal/events/delivery"
-	eventsinfra "github.com/ebk-tech/be-booking-events/internal/events/infrastructure"
 	"strconv"
-	inventoryapp "github.com/ebk-tech/be-booking-events/internal/inventory/application"
-	inventorydelivery "github.com/ebk-tech/be-booking-events/internal/inventory/delivery"
-	inventoryinfra "github.com/ebk-tech/be-booking-events/internal/inventory/infrastructure"
-	ordersapp "github.com/ebk-tech/be-booking-events/internal/orders/application"
-	ordersdelivery "github.com/ebk-tech/be-booking-events/internal/orders/delivery"
-	ordersinfra "github.com/ebk-tech/be-booking-events/internal/orders/infrastructure"
-	queueapp "github.com/ebk-tech/be-booking-events/internal/queue/application"
-	queuedelivery "github.com/ebk-tech/be-booking-events/internal/queue/delivery"
-	queueinfra "github.com/ebk-tech/be-booking-events/internal/queue/infrastructure"
-	"github.com/ebk-tech/be-booking-events/cmd/server/routes"
-	"github.com/ebk-tech/be-booking-events/internal/migration"
-	appmiddleware "github.com/ebk-tech/be-booking-events/internal/middleware"
+	"syscall"
+	"time"
+
+	adminapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/application"
+	admindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/delivery"
+	admininfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/infrastructure"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
+	authapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
+	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
+	authinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/infrastructure"
+	checkinapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/application"
+	checkindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/delivery"
+	checkininfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/infrastructure"
+	dashboardapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/application"
+	dashboarddelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/delivery"
+	dashboardinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/infrastructure"
+	eventsapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/application"
+	eventsdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/delivery"
+	eventsinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/infrastructure"
+	inventoryapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/application"
+	inventorydelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/delivery"
+	inventoryinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/infrastructure"
+	appmiddleware "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/middleware"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/migration"
+	ordersapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
+	ordersdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/delivery"
+	ordersinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/infrastructure"
+	promosapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/application"
+	promosdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/delivery"
+	promosinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/infrastructure"
+	queueapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
+	queuedelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/delivery"
+	queueinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/infrastructure"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/cmd/server/routes"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -60,13 +68,29 @@ func main() {
 	queueSecret := mustEnv("QUEUE_SECRET_KEY")
 	redisURL := mustEnv("REDIS_URL")
 
-	// --- Postgres ---
+	// --- Postgres connection pool ---
+	// Baca MAX_DB_CONNS dari env agar bisa disesuaikan per environment:
+	//   - Local dev      : 50 (default)
+	//   - Railway hobby  : 10 (Railway PgBouncer juga nge-pool di atasnya)
+	//   - Railway pro    : 20-30
+	maxConns := int32(50)
+	if v := os.Getenv("MAX_DB_CONNS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 32); err == nil && n > 0 {
+			maxConns = int32(n)
+		}
+	}
+
 	poolCfg, err := pgxpool.ParseConfig(dbURL)
 	if err != nil {
 		slog.Error("failed to parse database URL", "err", err)
 		os.Exit(1)
 	}
-	poolCfg.MaxConns = 50 // cukup untuk 1000 concurrent req (DB bottleneck di lock, bukan koneksi)
+	poolCfg.MaxConns = maxConns
+	poolCfg.MinConns = 2                                    // selalu ada 2 koneksi siap
+	poolCfg.MaxConnLifetime = 30 * time.Minute              // rotasi koneksi tiap 30 menit
+	poolCfg.MaxConnIdleTime = 5 * time.Minute               // tutup koneksi idle > 5 menit
+	poolCfg.HealthCheckPeriod = 1 * time.Minute             // ping koneksi idle tiap 1 menit
+
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		slog.Error("failed to connect to database", "err", err)
@@ -78,6 +102,7 @@ func main() {
 		slog.Error("database ping failed", "err", err)
 		os.Exit(1)
 	}
+	slog.Info("database pool ready", "max_conns", maxConns)
 
 	// --- Run Auto-Migration ---
 	slog.Info("running database auto-migration...")
@@ -86,7 +111,7 @@ func main() {
 		slog.Error("failed to acquire db connection for migration", "err", err)
 		os.Exit(1)
 	}
-	
+
 	if err := migration.EnsureLogTable(ctx, dbConn.Conn()); err != nil {
 		slog.Error("failed to ensure migration log table", "err", err)
 		dbConn.Release()
@@ -115,16 +140,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	// --- Main page + health check
-	
+	// --- Audit Logger (shared across modules for immutable event trail) ---
+	auditLogger := audit.NewLogger(pool)
+
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
 	passwordHasher := authinfra.NewBcryptPasswordHasher()
 	userRepo := authinfra.NewPostgresUserRepository(pool)
+	eventOwnershipChecker := authinfra.NewEventOwnershipAdapter(pool)
 	registerUC := authapp.NewRegisterUseCase(userRepo, passwordHasher)
 	loginUC := authapp.NewLoginUseCase(userRepo, passwordHasher, tokenProvider)
-	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo)
-	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, userRepo)
+	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo, eventOwnershipChecker)
+	listGateOpUC := authapp.NewListAssignedGateOperatorsUseCase(userRepo, eventOwnershipChecker)
+	removeGateOpUC := authapp.NewRemoveGateOperatorUseCase(userRepo, eventOwnershipChecker)
+	searchGateOpUC := authapp.NewSearchGateOperatorsUseCase(userRepo)
+	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, listGateOpUC, removeGateOpUC, searchGateOpUC, userRepo, redisClient)
+
+	// --- Admin module ---
+	adminRepo := admininfra.NewPostgresAdminRepository(pool)
+	listDisputesUC := adminapp.NewListDisputesUseCase(adminRepo)
+	overrideOrderUC := adminapp.NewOverrideOrderUseCase(adminRepo)
+	reassignTicketUC := adminapp.NewReassignTicketUseCase(adminRepo)
+	listAuditLogsUC := adminapp.NewListAuditLogsUseCase(adminRepo)
+	adminHandler := admindelivery.NewAdminHandler(listDisputesUC, overrideOrderUC, reassignTicketUC, listAuditLogsUC)
 
 	// --- Inventory module ---
 	ticketRepo := inventoryinfra.NewPostgresTicketRepository(pool)
@@ -143,7 +181,7 @@ func main() {
 	qrSigner := checkininfra.NewHMACQRSigner(qrSecret)
 	checkinRepo := checkininfra.NewPostgresCheckinRepository(pool)
 	issueUC := checkinapp.NewIssueTicketUseCase(checkinRepo, qrSigner)
-	scanUC := checkinapp.NewScanTicketUseCase(checkinRepo, qrSigner)
+	scanUC := checkinapp.NewScanTicketUseCase(checkinRepo, qrSigner, auditLogger)
 	checkinHandler := checkindelivery.NewCheckinHandler(issueUC, scanUC)
 
 	// --- Queue module ---
@@ -161,13 +199,14 @@ func main() {
 	xenditProvider := ordersinfra.NewXenditPaymentProvider(xenditSecretKey)
 	createOrderUC := ordersapp.NewCreateOrderUseCase(orderRepo)
 	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(orderRepo, xenditProvider)
-	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo)
-	requestRefundUC := ordersapp.NewRequestRefundUseCase(orderRepo)
-	approveRefundUC := ordersapp.NewApproveRefundUseCase(orderRepo, xenditProvider)
+	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo, xenditProvider, auditLogger)
+	requestRefundUC := ordersapp.NewRequestRefundUseCase(orderRepo, auditLogger)
+	approveRefundUC := ordersapp.NewApproveRefundUseCase(orderRepo, xenditProvider, auditLogger)
 	getOrderUC := ordersapp.NewGetOrderUseCase(orderRepo)
 	ordersHandler := ordersdelivery.NewOrdersHandler(
 		createOrderUC, initiatePayUC, confirmPayUC,
 		requestRefundUC, approveRefundUC, getOrderUC,
+		orderRepo,
 		xenditCallbackToken,
 	)
 
@@ -203,23 +242,55 @@ func main() {
 		provisionUnitsUC, uploadImageUC,
 	)
 
+	// --- Promos module ---
+	promoRepo := promosinfra.NewPostgresPromoRepository(pool)
+	adminPromosUC := promosapp.NewAdminPromosUseCase(promoRepo)
+	validatePromoUC := promosapp.NewValidatePromoUseCase(promoRepo)
+	promosHandler := promosdelivery.NewPromoHandler(adminPromosUC, validatePromoUC)
+
 	// --- Router ---
 	r := chi.NewRouter()
 
+	// Global CORS Middleware (with HttpOnly Cookie & Credentials support)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			} else {
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token, Idempotency-Key, X-Queue-Token, x-callback-token, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	})
+
 	routes.Register(r, routes.Deps{
-		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider),
+		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider, redisClient),
 		RequireBuyer:        authdelivery.RequireRole("BUYER"),
 		RequireOrganizer:    authdelivery.RequireRole("ORGANIZER"),
 		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
+		RequireAdmin:        authdelivery.RequireRole("ADMIN"),
 		Idempotency:         appmiddleware.Idempotency(redisClient),
+		QueueGuard:          appmiddleware.QueueTokenGuard(validateTokenUC, queueRepo),
 
 		Auth:      authHandler,
+		Admin:     adminHandler,
 		Inventory: inventoryHandler,
 		Dashboard: dashboardHandler,
 		Checkin:   checkinHandler,
 		Queue:     queueHandler,
 		Events:    eventsHandler,
 		Orders:    ordersHandler,
+		Promos:    promosHandler,
 	})
 
 	// --- HTTP server ---

@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: compfest_dev
+          POSTGRES_PASSWORD: compfest_dev
+          POSTGRES_DB: compfest_test
+          POSTGRES_HOST_AUTH_METHOD: md5
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U compfest_dev -d compfest_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Unit tests (no DB required)
+        run: |
+          go test \
+            ./internal/inventory/domain/... \
+            ./internal/inventory/application/... \
+            ./internal/auth/domain/... \
+            ./internal/auth/application/... \
+            ./internal/orders/application/... \
+            -count=1 -v -timeout 30s
+
+      - name: Integration tests (requires Postgres)
+        env:
+          TEST_DATABASE_URL: postgres://compfest_dev:compfest_dev@localhost:5433/compfest_test?sslmode=disable
+        run: go test ./internal/inventory/infrastructure/... -count=1 -v -timeout 60s

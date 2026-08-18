@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/dashboard/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/application"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

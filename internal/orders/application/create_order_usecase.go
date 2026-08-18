@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type CreateOrderUseCase struct {
@@ -16,9 +16,10 @@ func NewCreateOrderUseCase(repo OrderRepository) *CreateOrderUseCase {
 }
 
 type CreateOrderInput struct {
-	BuyerID string
-	EventID string
-	UnitIDs []string
+	BuyerID   string
+	EventID   string
+	UnitIDs   []string
+	PromoCode string
 }
 
 func (uc *CreateOrderUseCase) Execute(ctx context.Context, input CreateOrderInput) (*domain.Order, error) {
@@ -26,7 +27,7 @@ func (uc *CreateOrderUseCase) Execute(ctx context.Context, input CreateOrderInpu
 		return nil, fmt.Errorf("%w", domain.ErrNoHeldUnits)
 	}
 
-	order, err := uc.repo.CreateOrder(ctx, input.BuyerID, input.EventID, input.UnitIDs)
+	order, err := uc.repo.CreateOrder(ctx, input.BuyerID, input.EventID, input.UnitIDs, input.PromoCode)
 	if err != nil {
 		return nil, err
 	}

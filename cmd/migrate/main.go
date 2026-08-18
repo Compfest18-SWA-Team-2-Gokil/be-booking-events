@@ -12,7 +12,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/ebk-tech/be-booking-events/internal/migration"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/migration"
 	"github.com/jackc/pgx/v5"
 	"github.com/joho/godotenv"
 )

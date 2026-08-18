@@ -54,13 +54,14 @@ func (e *Event) Validate() error {
 }
 
 type TicketType struct {
-	ID          string `json:"id"`
-	EventID     string `json:"event_id"`
-	Name        string `json:"name"`
-	Price       int64  `json:"price"`
-	Kind        Kind   `json:"kind"`
-	TotalQuota  int    `json:"total_quota"`
-	PriceStatus string `json:"price_status"`
+	ID             string `json:"id"`
+	EventID        string `json:"event_id"`
+	Name           string `json:"name"`
+	Price          int64  `json:"price"`
+	Kind           Kind   `json:"kind"`
+	TotalQuota     int    `json:"total_quota"`
+	AvailableQuota int    `json:"available_quota"`
+	PriceStatus    string `json:"price_status"`
 }
 
 func (tt *TicketType) Validate() error {

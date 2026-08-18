@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ebk-tech/be-booking-events/internal/auth/delivery"
-	"github.com/ebk-tech/be-booking-events/internal/checkin/application"
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 )
 
 type CheckinHandler struct {

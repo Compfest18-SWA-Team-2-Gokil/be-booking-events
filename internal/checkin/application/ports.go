@@ -3,7 +3,7 @@ package application
 import (
 	"context"
 
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 )
 
 // QRSigner menangani signing dan verifikasi QR code tiket.

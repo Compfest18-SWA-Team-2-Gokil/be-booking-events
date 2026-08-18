@@ -1,0 +1,17 @@
+[Unit]
+Description=BE Booking Events API Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/be-booking-events
+EnvironmentFile=/opt/be-booking-events/.env
+ExecStart=/opt/be-booking-events/be-booking-events
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

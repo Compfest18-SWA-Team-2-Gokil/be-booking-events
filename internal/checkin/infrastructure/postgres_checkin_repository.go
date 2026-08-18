@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/checkin/application"
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,11 +25,11 @@ func (r *PostgresCheckinRepository) GetConfirmedUnit(ctx context.Context, ticket
 	var orderID *string
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT tu.id, tu.order_id, tt.event_id::text
+		SELECT tu.id, tu.order_id, tt.event_id::text, tu.status
 		FROM ticket_units tu
 		JOIN ticket_types tt ON tt.id = tu.ticket_type_id
-		WHERE tu.id = $1 AND tu.status = 'CONFIRMED'
-	`, ticketUnitID).Scan(&ticket.ID, &orderID, &ticket.EventID)
+		WHERE tu.id = $1 AND tu.status IN ('CONFIRMED', 'ADMITTED')
+	`, ticketUnitID).Scan(&ticket.ID, &orderID, &ticket.EventID, &ticket.Status)
 
 	if err != nil {
 		return nil, domain.ErrTicketNotConfirmed
@@ -71,6 +71,7 @@ func (r *PostgresCheckinRepository) IsGateOperatorAssigned(ctx context.Context, 
 		SELECT EXISTS (
 			SELECT 1 FROM gate_operator_assignments
 			WHERE user_id = $1 AND event_id = $2
+			  AND status = 'ACTIVE'
 		)
 	`, gateOperatorID, eventID).Scan(&exists)
 	if err != nil {

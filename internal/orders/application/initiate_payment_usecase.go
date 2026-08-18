@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type InitiatePaymentUseCase struct {
@@ -32,7 +32,23 @@ func (uc *InitiatePaymentUseCase) Execute(ctx context.Context, orderID, buyerID 
 		return nil, domain.ErrOrderNotFound
 	}
 
-	if order.Status != domain.OrderStatusPending {
+	if order.Status == domain.OrderStatusCancelled {
+		return nil, domain.ErrOrderCancelled
+	}
+
+	// Jika order sudah PAYMENT_PENDING, gunakan kembali invoice URL yang sudah aktif
+	if order.Status == domain.OrderStatusPaymentPending {
+		payment, err := uc.repo.GetPaymentByOrderID(ctx, order.ID)
+		if err == nil && payment != nil && payment.XenditInvoiceURL != "" {
+			return &InitiatePaymentOutput{
+				PaymentID:       payment.ID,
+				XenditInvoiceID: payment.XenditInvoiceID,
+				InvoiceURL:      payment.XenditInvoiceURL,
+			}, nil
+		}
+	}
+
+	if order.Status != domain.OrderStatusPending && order.Status != domain.OrderStatusPaymentPending {
 		return nil, domain.ErrOrderNotPending
 	}
 

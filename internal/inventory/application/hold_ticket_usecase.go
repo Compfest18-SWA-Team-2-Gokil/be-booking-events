@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 )
 
 // HoldDuration: 5 menit fixed, tidak configurable per-event di MVP (keputusan TDD Bab 4).
