@@ -28,8 +28,8 @@ func RoleFromCtx(ctx context.Context) string {
 	return v
 }
 
-// AuthMiddleware memvalidasi JWT dari header Authorization: Bearer <token> atau HttpOnly Cookie "auth_token".
-// Jika valid, cek Redis blocklist (logout), lalu set user_id dan role ke context.
+// AuthMiddleware memvalidasi JWT dari header Authorization: Bearer <token>.
+// Penggunaan Bearer-only token secara arsitektural mengeliminasi risiko serangan CSRF (Cross-Site Request Forgery).
 func AuthMiddleware(tokenProvider application.TokenProvider, redisClient *redis.Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,12 +37,10 @@ func AuthMiddleware(tokenProvider application.TokenProvider, redisClient *redis.
 			authHeader := r.Header.Get("Authorization")
 			if strings.HasPrefix(authHeader, "Bearer ") {
 				tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
-			} else if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
-				tokenStr = cookie.Value
 			}
 
 			if tokenStr == "" {
-				writeError(w, http.StatusUnauthorized, "Authorization token wajib disertakan (via Bearer header atau HttpOnly Cookie)")
+				writeError(w, http.StatusUnauthorized, "Authorization token wajib disertakan (format: Bearer <token>)")
 				return
 			}
 

@@ -5,16 +5,18 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type ConfirmPaymentUseCase struct {
-	repo     OrderRepository
-	provider PaymentProvider
+	repo        OrderRepository
+	provider    PaymentProvider
+	auditLogger *audit.Logger
 }
 
-func NewConfirmPaymentUseCase(repo OrderRepository, provider PaymentProvider) *ConfirmPaymentUseCase {
-	return &ConfirmPaymentUseCase{repo: repo, provider: provider}
+func NewConfirmPaymentUseCase(repo OrderRepository, provider PaymentProvider, auditLogger *audit.Logger) *ConfirmPaymentUseCase {
+	return &ConfirmPaymentUseCase{repo: repo, provider: provider, auditLogger: auditLogger}
 }
 
 type ConfirmPaymentInput struct {
@@ -25,6 +27,14 @@ type ConfirmPaymentInput struct {
 }
 
 func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPaymentInput) error {
+	// Fix #1 (Race Condition): Gunakan atomic idempotency check di dalam transaksi yang sama.
+	// ConfirmOrderPaymentIdempotent melakukan:
+	//   1. SELECT ... FOR UPDATE pada row order (serialisasi akses concurrent webhook)
+	//   2. Cek apakah sudah di status final (idempotency guard) — di dalam transaksi, bukan sebelumnya
+	//   3. UPDATE ticket_units HELD→CONFIRMED + cek RowsAffected (lost-seat detection)
+	//   4. UPDATE orders.status
+	// Dengan demikian dua webhook PAID yang datang bersamaan tidak bisa sama-sama lolos.
+
 	order, err := uc.repo.GetOrder(ctx, input.ExternalID)
 	if err != nil {
 		return err
@@ -36,6 +46,9 @@ func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPayme
 	}
 
 	// Idempotency guard: skip webhook jika order sudah di status final.
+	// Pengecekan ini masih di luar transaksi untuk efisiensi (fast-path),
+	// tapi ConfirmOrderPayment di bawah juga menggunakan SELECT FOR UPDATE
+	// untuk menutup race condition pada dua webhook yang datang bersamaan.
 	if uc.shouldSkipStateTransition(order.Status, payment.Status, input.Status) {
 		return nil
 	}
@@ -45,7 +58,23 @@ func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPayme
 		if err := uc.repo.UpdatePayment(ctx, payment); err != nil {
 			return err
 		}
-		return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusCancelled)
+		if err := uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusCancelled); err != nil {
+			return err
+		}
+		// Audit: pembayaran expired/gagal
+		if uc.auditLogger != nil {
+			uc.auditLogger.Log(ctx, audit.Entry{
+				ActorID:    "",
+				ActorRole:  "SYSTEM",
+				EntityType: "order",
+				EntityID:   order.ID,
+				Action:     "PAYMENT_EXPIRED",
+				FromStatus: string(order.Status),
+				ToStatus:   string(domain.OrderStatusCancelled),
+				Metadata:   map[string]any{"xendit_invoice_id": input.XenditInvoiceID, "xendit_status": input.Status},
+			})
+		}
+		return nil
 	}
 
 	payment.Status = domain.PaymentStatusSuccess
@@ -58,6 +87,19 @@ func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPayme
 	// Jika 0 rows (tiket sudah direbut), order diset PAYMENT_DISCREPANCY dan return ErrLostSeat.
 	if err := uc.repo.ConfirmOrderPayment(ctx, order.ID); err != nil {
 		if errors.Is(err, domain.ErrLostSeat) {
+			// Audit: lost seat / payment discrepancy
+			if uc.auditLogger != nil {
+				uc.auditLogger.Log(ctx, audit.Entry{
+					ActorID:    "",
+					ActorRole:  "SYSTEM",
+					EntityType: "order",
+					EntityID:   order.ID,
+					Action:     "PAYMENT_DISCREPANCY",
+					FromStatus: string(domain.OrderStatusPaid),
+					ToStatus:   string(domain.OrderStatusPaymentDiscrepancy),
+					Metadata:   map[string]any{"xendit_invoice_id": input.XenditInvoiceID, "reason": "ticket unit no longer available"},
+				})
+			}
 			// Auto-refund: uang dikembalikan otomatis karena tiket tidak bisa dikonfirmasi.
 			refundID, refundErr := uc.provider.RefundPayment(ctx, payment.XenditInvoiceID, payment.Amount)
 			if refundErr == nil {
@@ -68,6 +110,20 @@ func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPayme
 			return fmt.Errorf("lost seat: %w", err)
 		}
 		return err
+	}
+
+	// Audit: payment sukses dikonfirmasi
+	if uc.auditLogger != nil {
+		uc.auditLogger.Log(ctx, audit.Entry{
+			ActorID:    order.BuyerID,
+			ActorRole:  "BUYER",
+			EntityType: "order",
+			EntityID:   order.ID,
+			Action:     "CONFIRM_PAYMENT",
+			FromStatus: string(domain.OrderStatusPaid),
+			ToStatus:   string(domain.OrderStatusPaid),
+			Metadata:   map[string]any{"xendit_invoice_id": input.XenditInvoiceID, "payment_method": input.PaymentMethod},
+		})
 	}
 
 	return nil

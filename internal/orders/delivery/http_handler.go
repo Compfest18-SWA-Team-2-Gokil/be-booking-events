@@ -49,8 +49,9 @@ func NewOrdersHandler(
 // POST /api/v1/orders
 func (h *OrdersHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		EventID string   `json:"event_id"`
-		UnitIDs []string `json:"unit_ids"`
+		EventID   string   `json:"event_id"`
+		UnitIDs   []string `json:"unit_ids"`
+		PromoCode string   `json:"promo_code"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "request body tidak valid")
@@ -59,9 +60,10 @@ func (h *OrdersHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 
 	buyerID := authdelivery.UserIDFromCtx(r.Context())
 	order, err := h.createOrderUC.Execute(r.Context(), application.CreateOrderInput{
-		BuyerID: buyerID,
-		EventID: req.EventID,
-		UnitIDs: req.UnitIDs,
+		BuyerID:   buyerID,
+		EventID:   req.EventID,
+		UnitIDs:   req.UnitIDs,
+		PromoCode: req.PromoCode,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrNoHeldUnits) {

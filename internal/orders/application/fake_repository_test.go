@@ -23,7 +23,7 @@ func newFakeOrderRepo() *fakeOrderRepo {
 	}
 }
 
-func (r *fakeOrderRepo) CreateOrder(_ context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error) {
+func (r *fakeOrderRepo) CreateOrder(_ context.Context, buyerID, eventID string, unitIDs []string, promoCode string) (*domain.Order, error) {
 	if len(unitIDs) == 0 {
 		return nil, domain.ErrNoHeldUnits
 	}

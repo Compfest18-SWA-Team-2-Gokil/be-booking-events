@@ -4,15 +4,17 @@ import (
 	"context"
 	"time"
 
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type RequestRefundUseCase struct {
-	repo OrderRepository
+	repo        OrderRepository
+	auditLogger *audit.Logger
 }
 
-func NewRequestRefundUseCase(repo OrderRepository) *RequestRefundUseCase {
-	return &RequestRefundUseCase{repo: repo}
+func NewRequestRefundUseCase(repo OrderRepository, auditLogger *audit.Logger) *RequestRefundUseCase {
+	return &RequestRefundUseCase{repo: repo, auditLogger: auditLogger}
 }
 
 func (uc *RequestRefundUseCase) Execute(ctx context.Context, orderID, buyerID string) error {
@@ -47,5 +49,22 @@ func (uc *RequestRefundUseCase) Execute(ctx context.Context, orderID, buyerID st
 		return domain.ErrTicketAlreadyAdmitted
 	}
 
-	return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusRefundRequested)
+	if err := uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusRefundRequested); err != nil {
+		return err
+	}
+
+	// Audit: refund request
+	if uc.auditLogger != nil {
+		uc.auditLogger.Log(ctx, audit.Entry{
+			ActorID:    buyerID,
+			ActorRole:  "BUYER",
+			EntityType: "order",
+			EntityID:   order.ID,
+			Action:     "REFUND_REQUESTED",
+			FromStatus: string(domain.OrderStatusPaid),
+			ToStatus:   string(domain.OrderStatusRefundRequested),
+		})
+	}
+
+	return nil
 }

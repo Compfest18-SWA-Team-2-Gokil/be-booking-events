@@ -13,6 +13,7 @@ import (
 	adminapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/application"
 	admindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/delivery"
 	admininfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/infrastructure"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
 	authapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	authinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/infrastructure"
@@ -33,6 +34,9 @@ import (
 	ordersapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
 	ordersdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/delivery"
 	ordersinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/infrastructure"
+	promosapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/application"
+	promosdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/delivery"
+	promosinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/infrastructure"
 	queueapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
 	queuedelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/infrastructure"
@@ -136,6 +140,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Audit Logger (shared across modules for immutable event trail) ---
+	auditLogger := audit.NewLogger(pool)
+
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
 	passwordHasher := authinfra.NewBcryptPasswordHasher()
@@ -149,8 +156,9 @@ func main() {
 	adminRepo := admininfra.NewPostgresAdminRepository(pool)
 	listDisputesUC := adminapp.NewListDisputesUseCase(adminRepo)
 	overrideOrderUC := adminapp.NewOverrideOrderUseCase(adminRepo)
+	reassignTicketUC := adminapp.NewReassignTicketUseCase(adminRepo)
 	listAuditLogsUC := adminapp.NewListAuditLogsUseCase(adminRepo)
-	adminHandler := admindelivery.NewAdminHandler(listDisputesUC, overrideOrderUC, listAuditLogsUC)
+	adminHandler := admindelivery.NewAdminHandler(listDisputesUC, overrideOrderUC, reassignTicketUC, listAuditLogsUC)
 
 	// --- Inventory module ---
 	ticketRepo := inventoryinfra.NewPostgresTicketRepository(pool)
@@ -169,7 +177,7 @@ func main() {
 	qrSigner := checkininfra.NewHMACQRSigner(qrSecret)
 	checkinRepo := checkininfra.NewPostgresCheckinRepository(pool)
 	issueUC := checkinapp.NewIssueTicketUseCase(checkinRepo, qrSigner)
-	scanUC := checkinapp.NewScanTicketUseCase(checkinRepo, qrSigner)
+	scanUC := checkinapp.NewScanTicketUseCase(checkinRepo, qrSigner, auditLogger)
 	checkinHandler := checkindelivery.NewCheckinHandler(issueUC, scanUC)
 
 	// --- Queue module ---
@@ -187,9 +195,9 @@ func main() {
 	xenditProvider := ordersinfra.NewXenditPaymentProvider(xenditSecretKey)
 	createOrderUC := ordersapp.NewCreateOrderUseCase(orderRepo)
 	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(orderRepo, xenditProvider)
-	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo, xenditProvider)
-	requestRefundUC := ordersapp.NewRequestRefundUseCase(orderRepo)
-	approveRefundUC := ordersapp.NewApproveRefundUseCase(orderRepo, xenditProvider)
+	confirmPayUC := ordersapp.NewConfirmPaymentUseCase(orderRepo, xenditProvider, auditLogger)
+	requestRefundUC := ordersapp.NewRequestRefundUseCase(orderRepo, auditLogger)
+	approveRefundUC := ordersapp.NewApproveRefundUseCase(orderRepo, xenditProvider, auditLogger)
 	getOrderUC := ordersapp.NewGetOrderUseCase(orderRepo)
 	ordersHandler := ordersdelivery.NewOrdersHandler(
 		createOrderUC, initiatePayUC, confirmPayUC,
@@ -230,6 +238,12 @@ func main() {
 		provisionUnitsUC, uploadImageUC,
 	)
 
+	// --- Promos module ---
+	promoRepo := promosinfra.NewPostgresPromoRepository(pool)
+	adminPromosUC := promosapp.NewAdminPromosUseCase(promoRepo)
+	validatePromoUC := promosapp.NewValidatePromoUseCase(promoRepo)
+	promosHandler := promosdelivery.NewPromoHandler(adminPromosUC, validatePromoUC)
+
 	// --- Router ---
 	r := chi.NewRouter()
 
@@ -243,7 +257,7 @@ func main() {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
-			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token, Idempotency-Key, x-callback-token, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-CSRF-Token, Idempotency-Key, X-Queue-Token, x-callback-token, X-Requested-With")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 			if r.Method == http.MethodOptions {
@@ -262,7 +276,7 @@ func main() {
 		RequireGateOperator: authdelivery.RequireRole("GATE_OPERATOR"),
 		RequireAdmin:        authdelivery.RequireRole("ADMIN"),
 		Idempotency:         appmiddleware.Idempotency(redisClient),
-		QueueGuard:          appmiddleware.QueueTokenGuard(validateTokenUC),
+		QueueGuard:          appmiddleware.QueueTokenGuard(validateTokenUC, queueRepo),
 
 		Auth:      authHandler,
 		Admin:     adminHandler,
@@ -272,6 +286,7 @@ func main() {
 		Queue:     queueHandler,
 		Events:    eventsHandler,
 		Orders:    ordersHandler,
+		Promos:    promosHandler,
 	})
 
 	// --- HTTP server ---

@@ -47,6 +47,13 @@ components:
       schema:
         type: string
         format: uuid
+    unitID:
+      name: unitID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   schemas:
     Pagination:
@@ -557,6 +564,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+    put:
+      tags: [Events]
+      summary: Update detail event
+      description: Hanya ORGANIZER pemilik event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                category:
+                  type: string
+                date:
+                  type: string
+                  format: date-time
+                location:
+                  type: string
+      responses:
+        "200":
+          description: Event berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "403":
+          description: Bukan pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Events]
+      summary: Hapus event
+      description: Hanya ORGANIZER pemilik event. Event dengan tiket yang sudah terjual tidak dapat dihapus.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      responses:
+        "204":
+          description: Event berhasil dihapus
+        "403":
+          description: Bukan pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Event tidak bisa dihapus karena tiket sudah terjual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/events/{eventID}/image:
     post:
       tags: [Events]
@@ -607,6 +684,62 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Event tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/events/{eventID}/ticket-types/{ticketTypeID}:
+    put:
+      tags: [Events]
+      summary: Update tipe tiket
+      description: Hanya ORGANIZER. Mengubah nama, harga, atau total kuota.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - $ref: "#/components/parameters/ticketTypeID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                price:
+                  type: integer
+                total_quota:
+                  type: integer
+      responses:
+        "200":
+          description: Tipe tiket berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketType"
+        "409":
+          description: Harga terkunci (price locked) atau kuota di bawah tiket terjual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Events]
+      summary: Hapus tipe tiket
+      description: Hanya ORGANIZER. Tipe tiket yang sudah memiliki tiket terjual tidak dapat dihapus.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - $ref: "#/components/parameters/ticketTypeID"
+      responses:
+        "204":
+          description: Tipe tiket berhasil dihapus
+        "409":
+          description: Tidak bisa dihapus karena sudah ada tiket terjual
           content:
             application/json:
               schema:
@@ -1151,6 +1284,62 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/admin/tickets/{unitID}/reassign:
+    post:
+      tags: [Admin]
+      summary: Pindahkan unit tiket ke order lain (Dispute Resolution)
+      description: |
+        Admin dapat memindahkan unit tiket ke order ID lain (misalnya saat terjadi lost seat atau sengketa).
+        Tindakan ini dicatat secara immutable ke dalam audit log.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/unitID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_order_id, reason]
+              properties:
+                target_order_id:
+                  type: string
+                  format: uuid
+                  description: Order ID tujuan pemindahan tiket
+                new_seat_number:
+                  type: string
+                  description: Nomor kursi baru (opsional)
+                reason:
+                  type: string
+                  description: Alasan pemindahan untuk audit trail log
+            example:
+              target_order_id: "550e8400-e29b-41d4-a716-446655440000"
+              reason: "Penyelesaian klaim double booking"
+      responses:
+        "200":
+          description: Unit tiket berhasil dipindahkan dan tercatat di audit log
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: unit tiket berhasil dipindahkan dan tercatat di audit log
+        "400":
+          description: Parameter tidak lengkap
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Bukan ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/admin/audit-logs:
     get:
       tags: [Admin]
@@ -1284,7 +1473,7 @@ paths:
       tags: [Orders]
       summary: Daftar pengajuan refund untuk organizer
       description: |
-        Mengambil daftar pesanan yang statusnya `REFUND_REQUESTED` atau `REFUND_ORGANIZER_APPROVED`
+        Mengambil daftar riwayat pesanan refund (status `REFUND_REQUESTED`, `REFUND_ORGANIZER_APPROVED`, atau `REFUNDED`)
         untuk event yang dibuat oleh Organizer yang sedang login.
         Hanya ORGANIZER.
       security:
@@ -1478,3 +1667,190 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/promos/validate:
+    post:
+      summary: Validasi Kode Promo / Voucher & Hitung Diskon
+      tags: [Promos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, total_amount]
+              properties:
+                code: { type: string, example: "COMPFEST50K" }
+                total_amount: { type: integer, example: 500000 }
+                event_id: { type: string, format: uuid, description: "ID Event konser yang sedang di-checkout" }
+      responses:
+        "200":
+          description: Promo valid dan diskon berhasil dihitung
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "COMPFEST50K" }
+                  title: { type: string, example: "Voucher Diskon Spesial" }
+                  type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER" }
+                  event_id: { type: string, format: uuid, nullable: true }
+                  event_name: { type: string, example: "Compfest Music Festival" }
+                  discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT], example: "FIXED_AMOUNT" }
+                  discount_value: { type: integer, example: 50000 }
+                  discount_amount: { type: integer, example: 50000 }
+                  final_amount: { type: integer, example: 450000 }
+        "400":
+          description: Promo tidak valid / kuota habis / syarat minimum belum terpenuhi / belum dimulai / kedaluwarsa
+        "404":
+          description: Kode promo tidak ditemukan
+
+  /api/v1/promos/active:
+    get:
+      summary: Ambil Daftar Promo & Voucher Aktif (Homepage Banner & Buyer List)
+      tags: [Promos]
+      responses:
+        "200":
+          description: Daftar promo aktif
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        code: { type: string, example: "COMPFEST50K" }
+                        title: { type: string, example: "Diskon Pengguna Baru" }
+                        description: { type: string }
+                        type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER" }
+                        event_id: { type: string, format: uuid, nullable: true }
+                        event_name: { type: string }
+                        discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT] }
+                        discount_value: { type: integer }
+                        min_order_amount: { type: integer }
+                        max_discount_amount: { type: integer }
+                        max_usage: { type: integer }
+                        used_count: { type: integer }
+                        is_active: { type: boolean }
+                        start_date: { type: string, format: date-time, nullable: true }
+                        end_date: { type: string, format: date-time, nullable: true }
+                        created_at: { type: string, format: date-time }
+                        updated_at: { type: string, format: date-time }
+
+  /api/v1/admin/promos:
+    get:
+      summary: Daftar Semua Promo & Voucher (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar seluruh promo & voucher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        code: { type: string }
+                        title: { type: string }
+                        description: { type: string }
+                        type: { type: string, enum: [VOUCHER, PROMO] }
+                        event_id: { type: string, format: uuid, nullable: true }
+                        event_name: { type: string }
+                        discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT] }
+                        discount_value: { type: integer }
+                        min_order_amount: { type: integer }
+                        max_discount_amount: { type: integer }
+                        max_usage: { type: integer }
+                        used_count: { type: integer }
+                        is_active: { type: boolean }
+                        start_date: { type: string, format: date-time, nullable: true }
+                        end_date: { type: string, format: date-time, nullable: true }
+    post:
+      summary: Buat Voucher / Promo Baru (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, title, type, discount_type, discount_value]
+              properties:
+                code: { type: string, example: "COMPFEST50K" }
+                title: { type: string, example: "Diskon Early Bird" }
+                description: { type: string }
+                type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER", description: "VOUCHER (Global untuk semua event) atau PROMO (Khusus 1 konser/event)" }
+                event_id: { type: string, format: uuid, description: "Wajib diisi jika type = PROMO, biarkan null/kosong jika type = VOUCHER" }
+                discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT], example: "PERCENTAGE" }
+                discount_value: { type: integer, example: 20 }
+                min_order_amount: { type: integer, example: 100000 }
+                max_discount_amount: { type: integer, example: 50000 }
+                max_usage: { type: integer, example: 100 }
+                is_active: { type: boolean, example: true }
+                start_date: { type: string, format: date-time, example: "2026-08-18T00:00:00Z" }
+                end_date: { type: string, format: date-time, example: "2026-08-30T23:59:59Z" }
+      responses:
+        "201":
+          description: Promo/Voucher berhasil dibuat
+
+  /api/v1/admin/promos/{id}:
+    put:
+      summary: Update Voucher / Promo (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, title, type, discount_type, discount_value]
+              properties:
+                code: { type: string, example: "COMPFEST50K" }
+                title: { type: string, example: "Diskon Early Bird" }
+                description: { type: string }
+                type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER" }
+                event_id: { type: string, format: uuid, nullable: true }
+                discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT] }
+                discount_value: { type: integer }
+                min_order_amount: { type: integer }
+                max_discount_amount: { type: integer }
+                max_usage: { type: integer }
+                is_active: { type: boolean, example: true }
+                start_date: { type: string, format: date-time, nullable: true }
+                end_date: { type: string, format: date-time, nullable: true }
+      responses:
+        "200":
+          description: Promo/Voucher berhasil diperbarui
+    delete:
+      summary: Hapus Voucher / Promo (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Promo/Voucher berhasil dihapus

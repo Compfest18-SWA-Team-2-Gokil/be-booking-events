@@ -22,15 +22,18 @@ const (
 )
 
 type Order struct {
-	ID          string      `json:"id"`
-	BuyerID     string      `json:"buyer_id"`
-	EventID     string      `json:"event_id"`
-	EventName   string      `json:"event_name,omitempty"`
-	Status      OrderStatus `json:"status"`
-	TotalAmount int64       `json:"total_amount"`
-	UnitIDs     []string    `json:"unit_ids,omitempty"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID             string      `json:"id"`
+	BuyerID        string      `json:"buyer_id"`
+	EventID        string      `json:"event_id"`
+	EventName      string      `json:"event_name,omitempty"`
+	Status         OrderStatus `json:"status"`
+	TotalAmount    int64       `json:"total_amount"`
+	PromoCode      string      `json:"promo_code,omitempty"`
+	DiscountAmount int64       `json:"discount_amount,omitempty"`
+	UnitIDs        []string    `json:"unit_ids,omitempty"`
+	AdmittedCount  int         `json:"admitted_count"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
 }
 
 type Payment struct {

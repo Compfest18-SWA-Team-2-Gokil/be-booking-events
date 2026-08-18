@@ -10,6 +10,7 @@ import (
 	eventsdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/delivery"
 	inventorydelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/delivery"
 	ordersdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/delivery"
+	promosdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/promos/delivery"
 	queuedelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/delivery"
 	"github.com/go-chi/chi/v5"
 )
@@ -35,6 +36,7 @@ type Deps struct {
 	Queue     *queuedelivery.QueueHandler
 	Events    *eventsdelivery.EventsHandler
 	Orders    *ordersdelivery.OrdersHandler
+	Promos    *promosdelivery.PromoHandler
 }
 
 // Register mendaftarkan semua route ke router.
@@ -48,5 +50,6 @@ func Register(r chi.Router, d Deps) {
 	registerCheckin(r, d)
 	registerQueue(r, d)
 	registerOrders(r, d)
+	registerPromos(r, d)
 	registerDebug(r, d)
 }

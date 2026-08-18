@@ -14,18 +14,21 @@ import (
 type AdminHandler struct {
 	listDisputesUC   *application.ListDisputesUseCase
 	overrideOrderUC  *application.OverrideOrderUseCase
+	reassignTicketUC *application.ReassignTicketUseCase
 	listAuditLogsUC  *application.ListAuditLogsUseCase
 }
 
 func NewAdminHandler(
 	listUC *application.ListDisputesUseCase,
 	overrideUC *application.OverrideOrderUseCase,
+	reassignUC *application.ReassignTicketUseCase,
 	auditUC *application.ListAuditLogsUseCase,
 ) *AdminHandler {
 	return &AdminHandler{
-		listDisputesUC:  listUC,
-		overrideOrderUC: overrideUC,
-		listAuditLogsUC: auditUC,
+		listDisputesUC:   listUC,
+		overrideOrderUC:  overrideUC,
+		reassignTicketUC: reassignUC,
+		listAuditLogsUC:  auditUC,
 	}
 }
 
@@ -96,6 +99,43 @@ func (h *AdminHandler) OverrideOrder(w http.ResponseWriter, r *http.Request) {
 		"order_id": orderID,
 		"status":   req.Status,
 		"message":  "order berhasil di-override dan tercatat di audit log",
+	})
+}
+
+// POST /api/v1/admin/tickets/{unitID}/reassign
+func (h *AdminHandler) ReassignTicket(w http.ResponseWriter, r *http.Request) {
+	unitID := chi.URLParam(r, "unitID")
+	adminID := authdelivery.UserIDFromCtx(r.Context())
+
+	var req struct {
+		TargetOrderID string `json:"target_order_id"`
+		NewSeatNumber string `json:"new_seat_number"`
+		Reason        string `json:"reason"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body tidak valid")
+		return
+	}
+
+	err := h.reassignTicketUC.Execute(r.Context(), application.ReassignTicketInput{
+		UnitID:        unitID,
+		AdminID:       adminID,
+		TargetOrderID: req.TargetOrderID,
+		NewSeatNumber: req.NewSeatNumber,
+		Reason:        req.Reason,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrTargetOrderRequired), errors.Is(err, application.ErrReasonRequired):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"message": "unit tiket berhasil dipindahkan dan tercatat di audit log",
 	})
 }
 
