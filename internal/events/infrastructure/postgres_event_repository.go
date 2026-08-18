@@ -165,7 +165,13 @@ func (r *PostgresEventRepository) UpdateEventImageURL(ctx context.Context, event
 }
 
 func (r *PostgresEventRepository) CreateTicketType(ctx context.Context, tt *domain.TicketType) error {
-	err := r.pool.QueryRow(ctx, `
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	err = tx.QueryRow(ctx, `
 		INSERT INTO ticket_types (event_id, name, price, kind, total_quota)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
@@ -173,6 +179,23 @@ func (r *PostgresEventRepository) CreateTicketType(ctx context.Context, tt *doma
 	if err != nil {
 		return fmt.Errorf("create ticket type: %w", err)
 	}
+
+	// Generate ticket_units sebanyak total_quota agar tiket siap di-hold / dibeli
+	if tt.TotalQuota > 0 {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO ticket_units (ticket_type_id, status)
+			SELECT $1, 'AVAILABLE'
+			FROM generate_series(1, $2)
+		`, tt.ID, tt.TotalQuota)
+		if err != nil {
+			return fmt.Errorf("generate ticket units: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit ticket type: %w", err)
+	}
+
 	tt.PriceStatus = "OPEN"
 	return nil
 }
