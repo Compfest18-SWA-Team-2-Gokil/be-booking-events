@@ -179,10 +179,26 @@ func (r *PostgresEventRepository) CreateTicketType(ctx context.Context, tt *doma
 
 func (r *PostgresEventRepository) ListTicketTypes(ctx context.Context, eventID string) ([]*domain.TicketType, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, event_id, name, price, kind, total_quota, price_status
-		FROM ticket_types
-		WHERE event_id = $1
-		ORDER BY created_at ASC
+		SELECT 
+			tt.id, 
+			tt.event_id, 
+			tt.name, 
+			tt.price, 
+			tt.kind, 
+			tt.total_quota, 
+			tt.price_status,
+			COALESCE(
+				CASE 
+					WHEN COUNT(tu.id) = 0 THEN tt.total_quota
+					ELSE SUM(CASE WHEN tu.status = 'AVAILABLE' THEN 1 ELSE 0 END)
+				END, 
+				tt.total_quota
+			) AS available_quota
+		FROM ticket_types tt
+		LEFT JOIN ticket_units tu ON tu.ticket_type_id = tt.id
+		WHERE tt.event_id = $1
+		GROUP BY tt.id, tt.event_id, tt.name, tt.price, tt.kind, tt.total_quota, tt.price_status, tt.created_at
+		ORDER BY tt.created_at ASC
 	`, eventID)
 	if err != nil {
 		return nil, fmt.Errorf("list ticket types: %w", err)
@@ -193,7 +209,7 @@ func (r *PostgresEventRepository) ListTicketTypes(ctx context.Context, eventID s
 	for rows.Next() {
 		tt := &domain.TicketType{}
 		var kind string
-		if err := rows.Scan(&tt.ID, &tt.EventID, &tt.Name, &tt.Price, &kind, &tt.TotalQuota, &tt.PriceStatus); err != nil {
+		if err := rows.Scan(&tt.ID, &tt.EventID, &tt.Name, &tt.Price, &kind, &tt.TotalQuota, &tt.PriceStatus, &tt.AvailableQuota); err != nil {
 			return nil, fmt.Errorf("scan ticket type: %w", err)
 		}
 		tt.Kind = domain.Kind(kind)
@@ -206,9 +222,26 @@ func (r *PostgresEventRepository) GetTicketType(ctx context.Context, ticketTypeI
 	tt := &domain.TicketType{}
 	var kind string
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, event_id, name, price, kind, total_quota, price_status
-		FROM ticket_types WHERE id = $1
-	`, ticketTypeID).Scan(&tt.ID, &tt.EventID, &tt.Name, &tt.Price, &kind, &tt.TotalQuota, &tt.PriceStatus)
+		SELECT 
+			tt.id, 
+			tt.event_id, 
+			tt.name, 
+			tt.price, 
+			tt.kind, 
+			tt.total_quota, 
+			tt.price_status,
+			COALESCE(
+				CASE 
+					WHEN COUNT(tu.id) = 0 THEN tt.total_quota
+					ELSE SUM(CASE WHEN tu.status = 'AVAILABLE' THEN 1 ELSE 0 END)
+				END, 
+				tt.total_quota
+			) AS available_quota
+		FROM ticket_types tt
+		LEFT JOIN ticket_units tu ON tu.ticket_type_id = tt.id
+		WHERE tt.id = $1
+		GROUP BY tt.id, tt.event_id, tt.name, tt.price, tt.kind, tt.total_quota, tt.price_status
+	`, ticketTypeID).Scan(&tt.ID, &tt.EventID, &tt.Name, &tt.Price, &kind, &tt.TotalQuota, &tt.PriceStatus, &tt.AvailableQuota)
 	if err == pgx.ErrNoRows {
 		return nil, domain.ErrTicketTypeNotFound
 	}

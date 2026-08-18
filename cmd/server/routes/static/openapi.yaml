@@ -1667,3 +1667,190 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/promos/validate:
+    post:
+      summary: Validasi Kode Promo / Voucher & Hitung Diskon
+      tags: [Promos]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, total_amount]
+              properties:
+                code: { type: string, example: "COMPFEST50K" }
+                total_amount: { type: integer, example: 500000 }
+                event_id: { type: string, format: uuid, description: "ID Event konser yang sedang di-checkout" }
+      responses:
+        "200":
+          description: Promo valid dan diskon berhasil dihitung
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string, example: "COMPFEST50K" }
+                  title: { type: string, example: "Voucher Diskon Spesial" }
+                  type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER" }
+                  event_id: { type: string, format: uuid, nullable: true }
+                  event_name: { type: string, example: "Compfest Music Festival" }
+                  discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT], example: "FIXED_AMOUNT" }
+                  discount_value: { type: integer, example: 50000 }
+                  discount_amount: { type: integer, example: 50000 }
+                  final_amount: { type: integer, example: 450000 }
+        "400":
+          description: Promo tidak valid / kuota habis / syarat minimum belum terpenuhi / belum dimulai / kedaluwarsa
+        "404":
+          description: Kode promo tidak ditemukan
+
+  /api/v1/promos/active:
+    get:
+      summary: Ambil Daftar Promo & Voucher Aktif (Homepage Banner & Buyer List)
+      tags: [Promos]
+      responses:
+        "200":
+          description: Daftar promo aktif
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        code: { type: string, example: "COMPFEST50K" }
+                        title: { type: string, example: "Diskon Pengguna Baru" }
+                        description: { type: string }
+                        type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER" }
+                        event_id: { type: string, format: uuid, nullable: true }
+                        event_name: { type: string }
+                        discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT] }
+                        discount_value: { type: integer }
+                        min_order_amount: { type: integer }
+                        max_discount_amount: { type: integer }
+                        max_usage: { type: integer }
+                        used_count: { type: integer }
+                        is_active: { type: boolean }
+                        start_date: { type: string, format: date-time, nullable: true }
+                        end_date: { type: string, format: date-time, nullable: true }
+                        created_at: { type: string, format: date-time }
+                        updated_at: { type: string, format: date-time }
+
+  /api/v1/admin/promos:
+    get:
+      summary: Daftar Semua Promo & Voucher (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar seluruh promo & voucher
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  promos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        code: { type: string }
+                        title: { type: string }
+                        description: { type: string }
+                        type: { type: string, enum: [VOUCHER, PROMO] }
+                        event_id: { type: string, format: uuid, nullable: true }
+                        event_name: { type: string }
+                        discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT] }
+                        discount_value: { type: integer }
+                        min_order_amount: { type: integer }
+                        max_discount_amount: { type: integer }
+                        max_usage: { type: integer }
+                        used_count: { type: integer }
+                        is_active: { type: boolean }
+                        start_date: { type: string, format: date-time, nullable: true }
+                        end_date: { type: string, format: date-time, nullable: true }
+    post:
+      summary: Buat Voucher / Promo Baru (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, title, type, discount_type, discount_value]
+              properties:
+                code: { type: string, example: "COMPFEST50K" }
+                title: { type: string, example: "Diskon Early Bird" }
+                description: { type: string }
+                type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER", description: "VOUCHER (Global untuk semua event) atau PROMO (Khusus 1 konser/event)" }
+                event_id: { type: string, format: uuid, description: "Wajib diisi jika type = PROMO, biarkan null/kosong jika type = VOUCHER" }
+                discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT], example: "PERCENTAGE" }
+                discount_value: { type: integer, example: 20 }
+                min_order_amount: { type: integer, example: 100000 }
+                max_discount_amount: { type: integer, example: 50000 }
+                max_usage: { type: integer, example: 100 }
+                is_active: { type: boolean, example: true }
+                start_date: { type: string, format: date-time, example: "2026-08-18T00:00:00Z" }
+                end_date: { type: string, format: date-time, example: "2026-08-30T23:59:59Z" }
+      responses:
+        "201":
+          description: Promo/Voucher berhasil dibuat
+
+  /api/v1/admin/promos/{id}:
+    put:
+      summary: Update Voucher / Promo (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, title, type, discount_type, discount_value]
+              properties:
+                code: { type: string, example: "COMPFEST50K" }
+                title: { type: string, example: "Diskon Early Bird" }
+                description: { type: string }
+                type: { type: string, enum: [VOUCHER, PROMO], example: "VOUCHER" }
+                event_id: { type: string, format: uuid, nullable: true }
+                discount_type: { type: string, enum: [PERCENTAGE, FIXED_AMOUNT] }
+                discount_value: { type: integer }
+                min_order_amount: { type: integer }
+                max_discount_amount: { type: integer }
+                max_usage: { type: integer }
+                is_active: { type: boolean, example: true }
+                start_date: { type: string, format: date-time, nullable: true }
+                end_date: { type: string, format: date-time, nullable: true }
+      responses:
+        "200":
+          description: Promo/Voucher berhasil diperbarui
+    delete:
+      summary: Hapus Voucher / Promo (Admin)
+      tags: [Admin, Promos]
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Promo/Voucher berhasil dihapus
