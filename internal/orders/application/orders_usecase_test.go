@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/application"
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 func TestCreateOrderUseCase_Success(t *testing.T) {
@@ -90,7 +90,7 @@ func TestConfirmPaymentUseCase_Paid(t *testing.T) {
 		ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123",
 	}
 
-	uc := application.NewConfirmPaymentUseCase(repo)
+	uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{}, nil)
 	err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
 		XenditInvoiceID: "xendit-inv-123",
 		ExternalID:      "order-1",
@@ -115,7 +115,7 @@ func TestRequestRefundUseCase_Success(t *testing.T) {
 		ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusPaid,
 	}
 
-	uc := application.NewRequestRefundUseCase(repo)
+	uc := application.NewRequestRefundUseCase(repo, nil)
 	err := uc.Execute(context.Background(), "order-1", "buyer-1")
 
 	if err != nil {
@@ -132,7 +132,7 @@ func TestRequestRefundUseCase_NotPaid(t *testing.T) {
 		ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusPending,
 	}
 
-	uc := application.NewRequestRefundUseCase(repo)
+	uc := application.NewRequestRefundUseCase(repo, nil)
 	err := uc.Execute(context.Background(), "order-1", "buyer-1")
 
 	if err != domain.ErrOrderNotPaid {
@@ -149,17 +149,14 @@ func TestApproveRefundUseCase_Success(t *testing.T) {
 		ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Amount: 150000,
 	}
 
-	uc := application.NewApproveRefundUseCase(repo, &fakePaymentProvider{})
+	uc := application.NewApproveRefundUseCase(repo, &fakePaymentProvider{}, nil)
 	err := uc.Execute(context.Background(), "order-1")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if repo.orders["order-1"].Status != domain.OrderStatusRefunded {
-		t.Errorf("status = %s, want REFUNDED", repo.orders["order-1"].Status)
-	}
-	if repo.payments["order-1"].XenditRefundID == "" {
-		t.Error("xendit_refund_id tidak tersimpan")
+	if repo.orders["order-1"].Status != domain.OrderStatusRefundOrganizerApproved {
+		t.Errorf("status = %s, want REFUND_ORGANIZER_APPROVED", repo.orders["order-1"].Status)
 	}
 }
 
@@ -169,7 +166,7 @@ func TestApproveRefundUseCase_NotRequested(t *testing.T) {
 		ID: "order-1", Status: domain.OrderStatusPaid,
 	}
 
-	uc := application.NewApproveRefundUseCase(repo, &fakePaymentProvider{})
+	uc := application.NewApproveRefundUseCase(repo, &fakePaymentProvider{}, nil)
 	err := uc.Execute(context.Background(), "order-1")
 
 	if err != domain.ErrRefundNotRequested {
@@ -192,7 +189,7 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusPending,
 		}
 
-		uc := application.NewConfirmPaymentUseCase(repo)
+		uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{}, nil)
 
 		// Call 1: PAID -> Sukses mengubah ke PAID
 		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
@@ -232,7 +229,7 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusSuccess,
 		}
 
-		uc := application.NewConfirmPaymentUseCase(repo)
+		uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{}, nil)
 
 		// Webhook EXPIRED masuk setelah PAID -> Harusnya diabaikan dan status tetap PAID
 		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{
@@ -260,7 +257,7 @@ func TestConfirmPaymentUseCase_IdempotencyAndOutOfOrder(t *testing.T) {
 			ID: "pay-1", OrderID: "order-1", XenditInvoiceID: "xendit-inv-123", Status: domain.PaymentStatusFailed,
 		}
 
-		uc := application.NewConfirmPaymentUseCase(repo)
+		uc := application.NewConfirmPaymentUseCase(repo, &fakePaymentProvider{}, nil)
 
 		// Webhook EXPIRED masuk lagi -> Harusnya diabaikan
 		err := uc.Execute(context.Background(), application.ConfirmPaymentInput{

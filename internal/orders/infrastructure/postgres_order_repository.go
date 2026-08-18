@@ -3,9 +3,10 @@ package infrastructure
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/application"
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -21,8 +22,8 @@ func NewPostgresOrderRepository(pool *pgxpool.Pool) *PostgresOrderRepository {
 var _ application.OrderRepository = (*PostgresOrderRepository)(nil)
 
 // CreateOrder membuat order dan mengaitkan unit_ids ke order dalam satu transaksi.
-// Total amount dihitung dari harga ticket_type masing-masing unit.
-func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error) {
+// Total amount dihitung dari harga ticket_type masing-masing unit dan dipotong promo jika valid.
+func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string, promoCode string) (*domain.Order, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -30,13 +31,13 @@ func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, even
 	defer tx.Rollback(ctx)
 
 	// Pastikan semua unit HELD dan ambil total harga.
-	var totalAmount int64
+	var subtotal int64
 	err = tx.QueryRow(ctx, `
 		SELECT COALESCE(SUM(tt.price), 0)
 		FROM ticket_units tu
 		JOIN ticket_types tt ON tt.id = tu.ticket_type_id
 		WHERE tu.id = ANY($1) AND tu.status = 'HELD' AND tu.order_id IS NULL
-	`, unitIDs).Scan(&totalAmount)
+	`, unitIDs).Scan(&subtotal)
 	if err != nil {
 		return nil, fmt.Errorf("hitung total: %w", err)
 	}
@@ -50,14 +51,95 @@ func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, even
 		return nil, domain.ErrNoHeldUnits
 	}
 
+	// 1. Cek apakah event ini memiliki Promo Event otomatis aktif (PROMO)
+	var eventDiscount int64
+	var epID string
+	var epDiscType string
+	var epDiscVal, epMinOrder, epMaxDisc int64
+	var epMaxUsage, epUsedCount int
+	var epStartDate, epEndDate *time.Time
+
+	err = tx.QueryRow(ctx, `
+		SELECT id, discount_type, discount_value, min_order_amount, max_discount_amount, max_usage, used_count, start_date, end_date
+		FROM promos
+		WHERE type = 'PROMO' AND event_id = $1 AND is_active = TRUE
+		ORDER BY created_at DESC LIMIT 1
+		FOR UPDATE
+	`, eventID).Scan(&epID, &epDiscType, &epDiscVal, &epMinOrder, &epMaxDisc, &epMaxUsage, &epUsedCount, &epStartDate, &epEndDate)
+
+	if err == nil {
+		now := time.Now()
+		timeValid := (epStartDate == nil || !now.Before(*epStartDate)) && (epEndDate == nil || !now.After(*epEndDate))
+		if timeValid && (epMaxUsage == 0 || epUsedCount < epMaxUsage) && subtotal >= epMinOrder {
+			if epDiscType == "PERCENTAGE" {
+				eventDiscount = (subtotal * epDiscVal) / 100
+				if epMaxDisc > 0 && eventDiscount > epMaxDisc {
+					eventDiscount = epMaxDisc
+				}
+			} else {
+				eventDiscount = epDiscVal
+			}
+			if eventDiscount > subtotal {
+				eventDiscount = subtotal
+			}
+			_, _ = tx.Exec(ctx, `UPDATE promos SET used_count = used_count + 1, updated_at = NOW() WHERE id = $1`, epID)
+		}
+	}
+
+	subtotalAfterPromo := subtotal - eventDiscount
+
+	// 2. Cek apakah pembeli memasukkan kode Voucher Belanja tambahan (VOUCHER)
+	var voucherDiscount int64
+	var validPromoCode *string
+	if promoCode != "" {
+		var vID string
+		var vDiscType string
+		var vDiscVal, vMinOrder, vMaxDisc int64
+		var vMaxUsage, vUsedCount int
+		var vStartDate, vEndDate *time.Time
+
+		err = tx.QueryRow(ctx, `
+			SELECT id, discount_type, discount_value, min_order_amount, max_discount_amount, max_usage, used_count, start_date, end_date
+			FROM promos
+			WHERE type = 'VOUCHER' AND UPPER(code) = UPPER($1) AND is_active = TRUE
+			FOR UPDATE
+		`, promoCode).Scan(&vID, &vDiscType, &vDiscVal, &vMinOrder, &vMaxDisc, &vMaxUsage, &vUsedCount, &vStartDate, &vEndDate)
+
+		if err == nil {
+			now := time.Now()
+			timeValid := (vStartDate == nil || !now.Before(*vStartDate)) && (vEndDate == nil || !now.After(*vEndDate))
+			if timeValid && (vMaxUsage == 0 || vUsedCount < vMaxUsage) && subtotalAfterPromo >= vMinOrder {
+				if vDiscType == "PERCENTAGE" {
+					voucherDiscount = (subtotalAfterPromo * vDiscVal) / 100
+					if vMaxDisc > 0 && voucherDiscount > vMaxDisc {
+						voucherDiscount = vMaxDisc
+					}
+				} else {
+					voucherDiscount = vDiscVal
+				}
+				if voucherDiscount > subtotalAfterPromo {
+					voucherDiscount = subtotalAfterPromo
+				}
+				validPromoCode = &promoCode
+				_, _ = tx.Exec(ctx, `UPDATE promos SET used_count = used_count + 1, updated_at = NOW() WHERE id = $1`, vID)
+			}
+		}
+	}
+
+	totalDiscount := eventDiscount + voucherDiscount
+	finalTotal := subtotal - totalDiscount
+	if finalTotal < 0 {
+		finalTotal = 0
+	}
+
 	order := &domain.Order{}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO orders (buyer_id, event_id, status, total_amount)
-		VALUES ($1, $2, 'PENDING', $3)
-		RETURNING id, buyer_id, event_id, status, total_amount, created_at, updated_at
-	`, buyerID, eventID, totalAmount).Scan(
+		INSERT INTO orders (buyer_id, event_id, status, total_amount, promo_code, discount_amount)
+		VALUES ($1, $2, 'PENDING', $3, $4, $5)
+		RETURNING id, buyer_id, event_id, status, total_amount, COALESCE(promo_code, ''), COALESCE(discount_amount, 0), created_at, updated_at
+	`, buyerID, eventID, finalTotal, validPromoCode, totalDiscount).Scan(
 		&order.ID, &order.BuyerID, &order.EventID, &order.Status,
-		&order.TotalAmount, &order.CreatedAt, &order.UpdatedAt,
+		&order.TotalAmount, &order.PromoCode, &order.DiscountAmount, &order.CreatedAt, &order.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert order: %w", err)
@@ -72,17 +154,32 @@ func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, even
 		return nil, fmt.Errorf("link units: %w", err)
 	}
 
+	order.UnitIDs = unitIDs
 	return order, tx.Commit(ctx)
 }
 
 func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) (*domain.Order, error) {
 	o := &domain.Order{}
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, buyer_id, event_id, status, total_amount, created_at, updated_at
-		FROM orders WHERE id = $1
+		SELECT 
+			o.id, 
+			o.buyer_id, 
+			o.event_id, 
+			COALESCE(e.name, '') as event_name,
+			o.status, 
+			o.total_amount, 
+			COALESCE(array_agg(tu.id::text) FILTER (WHERE tu.id IS NOT NULL), '{}') as unit_ids,
+			COALESCE(SUM(CASE WHEN tu.status = 'ADMITTED' THEN 1 ELSE 0 END), 0) as admitted_count,
+			o.created_at, 
+			o.updated_at
+		FROM orders o
+		LEFT JOIN events e ON e.id = o.event_id
+		LEFT JOIN ticket_units tu ON tu.order_id = o.id
+		WHERE o.id = $1
+		GROUP BY o.id, e.name
 	`, orderID).Scan(
-		&o.ID, &o.BuyerID, &o.EventID, &o.Status,
-		&o.TotalAmount, &o.CreatedAt, &o.UpdatedAt,
+		&o.ID, &o.BuyerID, &o.EventID, &o.EventName, &o.Status,
+		&o.TotalAmount, &o.UnitIDs, &o.AdmittedCount, &o.CreatedAt, &o.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {
 		return nil, domain.ErrOrderNotFound
@@ -91,6 +188,144 @@ func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) 
 		return nil, fmt.Errorf("get order: %w", err)
 	}
 	return o, nil
+}
+
+// ReleaseExpiredHeldOrders membatalkan order yang tidak lagi memiliki tiket berstatus HELD.
+// Digunakan sebelum query get orders agar status PENDING yang expired ter-update ke CANCELLED.
+func (r *PostgresOrderRepository) ReleaseExpiredHeldOrders(ctx context.Context, buyerID string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE orders
+		SET status = 'CANCELLED', updated_at = NOW()
+		WHERE buyer_id = $1
+		  AND status = 'PENDING'
+		  AND NOT EXISTS (
+		          SELECT 1 FROM ticket_units WHERE order_id = orders.id AND status = 'HELD'
+		  )
+	`, buyerID)
+	return err
+}
+
+func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID string, limit, offset int) ([]*domain.Order, int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM orders WHERE buyer_id = $1`, buyerID).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count orders by buyer: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT 
+			o.id, 
+			o.buyer_id, 
+			o.event_id, 
+			COALESCE(e.name, '') as event_name,
+			o.status, 
+			o.total_amount, 
+			COALESCE(array_agg(tu.id::text) FILTER (WHERE tu.id IS NOT NULL), '{}') as unit_ids,
+			COALESCE(SUM(CASE WHEN tu.status = 'ADMITTED' THEN 1 ELSE 0 END), 0) as admitted_count,
+			o.created_at, 
+			o.updated_at
+		FROM orders o
+		LEFT JOIN events e ON e.id = o.event_id
+		LEFT JOIN ticket_units tu ON tu.order_id = o.id
+		WHERE o.buyer_id = $1
+		GROUP BY o.id, e.name
+		ORDER BY o.created_at DESC
+		LIMIT $2 OFFSET $3
+	`, buyerID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("get orders by buyer: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []*domain.Order
+	for rows.Next() {
+		o := &domain.Order{}
+		if err := rows.Scan(
+			&o.ID, &o.BuyerID, &o.EventID, &o.EventName, &o.Status,
+			&o.TotalAmount, &o.UnitIDs, &o.AdmittedCount, &o.CreatedAt, &o.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		orders = append(orders, o)
+	}
+	return orders, total, rows.Err()
+}
+
+// ConfirmOrderPayment atomik: update ticket_units HELD→CONFIRMED dan order→PAID.
+// Jika 0 unit ter-update (tiket sudah direbut), order diset PAYMENT_DISCREPANCY dan return ErrLostSeat.
+func (r *PostgresOrderRepository) ConfirmOrderPayment(ctx context.Context, orderID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Kunci baris order dengan SELECT FOR UPDATE untuk mencegah race condition webhook konkuren
+	var currentStatus string
+	err = tx.QueryRow(ctx, `
+		SELECT status FROM orders WHERE id = $1 FOR UPDATE
+	`, orderID).Scan(&currentStatus)
+	if err != nil {
+		return fmt.Errorf("lock order: %w", err)
+	}
+
+	// 2. Idempotency check: jika status sudah PAID, no-op dan return nil
+	if currentStatus == string(domain.OrderStatusPaid) {
+		return nil
+	}
+	if currentStatus == string(domain.OrderStatusPaymentDiscrepancy) {
+		return domain.ErrLostSeat
+	}
+
+	// 3. Update status ticket_units dari HELD ke CONFIRMED
+	tag, err := tx.Exec(ctx, `
+		UPDATE ticket_units SET status = 'CONFIRMED', updated_at = NOW()
+		WHERE order_id = $1 AND status = 'HELD'
+	`, orderID)
+	if err != nil {
+		return fmt.Errorf("confirm units: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		// Tiket sudah direbut — tandai sebagai discrepancy, jangan set PAID.
+		_, err = tx.Exec(ctx, `
+			UPDATE orders SET status = 'PAYMENT_DISCREPANCY', updated_at = NOW() WHERE id = $1
+		`, orderID)
+		if err != nil {
+			return fmt.Errorf("set discrepancy: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return err
+		}
+		return domain.ErrLostSeat
+	}
+
+	_, err = tx.Exec(ctx, `
+		UPDATE orders SET status = 'PAID', updated_at = NOW() WHERE id = $1
+	`, orderID)
+	if err != nil {
+		return fmt.Errorf("set paid: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+// HasAdmittedUnits mengembalikan true jika ada tiket dalam order yang sudah di-scan gerbang.
+func (r *PostgresOrderRepository) HasAdmittedUnits(ctx context.Context, orderID string) (bool, error) {
+	var exists bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM ticket_units WHERE order_id = $1 AND status = 'ADMITTED'
+		)
+	`, orderID).Scan(&exists)
+	return exists, err
 }
 
 // UpdateOrderStatus juga update ticket_units status jika order berpindah ke PAID atau REFUNDED.
@@ -201,9 +436,79 @@ func (r *PostgresOrderRepository) GetBuyerEmail(ctx context.Context, buyerID str
 	return email, err
 }
 
+func (r *PostgresOrderRepository) GetEventDate(ctx context.Context, eventID string) (time.Time, error) {
+	var eventDate time.Time
+	err := r.pool.QueryRow(ctx, `SELECT date FROM events WHERE id = $1`, eventID).Scan(&eventDate)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return eventDate, nil
+}
+
+func (r *PostgresOrderRepository) GetRefundRequestsByOrganizer(ctx context.Context, organizerID string, limit, offset int) ([]*application.RefundRequestItem, int, error) {
+	var total int
+	err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		WHERE e.organizer_id = $1
+		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED', 'REFUNDED')
+	`, organizerID).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count refund requests by organizer: %w", err)
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT 
+			o.id,
+			o.buyer_id,
+			u.email as buyer_email,
+			o.event_id,
+			e.name as event_name,
+			o.status,
+			o.total_amount,
+			o.created_at
+		FROM orders o
+		JOIN events e ON e.id = o.event_id
+		JOIN users u ON u.id = o.buyer_id
+		WHERE e.organizer_id = $1
+		  AND o.status IN ('REFUND_REQUESTED', 'REFUND_ORGANIZER_APPROVED', 'REFUNDED')
+		ORDER BY o.updated_at DESC
+		LIMIT $2 OFFSET $3
+	`, organizerID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("get refund requests by organizer: %w", err)
+	}
+	defer rows.Close()
+
+	var list []*application.RefundRequestItem
+	for rows.Next() {
+		item := &application.RefundRequestItem{}
+		if err := rows.Scan(
+			&item.OrderID,
+			&item.BuyerID,
+			&item.BuyerEmail,
+			&item.EventID,
+			&item.EventName,
+			&item.Status,
+			&item.TotalAmount,
+			&item.CreatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		list = append(list, item)
+	}
+	return list, total, rows.Err()
+}
+
 func nullableStr(s string) any {
 	if s == "" {
 		return nil
 	}
 	return s
 }
+

@@ -2,17 +2,25 @@ package application
 
 import (
 	"context"
+	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type OrderRepository interface {
 	// CreateOrder membuat order dan mengaitkan unit_ids ke order dalam satu transaksi.
-	// Menghitung total_amount dari harga ticket_type masing-masing unit.
-	CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error)
+	// Menghitung total_amount dari harga ticket_type masing-masing unit dan memotong promo jika ada.
+	CreateOrder(ctx context.Context, buyerID, eventID string, unitIDs []string, promoCode string) (*domain.Order, error)
 
 	GetOrder(ctx context.Context, orderID string) (*domain.Order, error)
+	// GetOrdersByBuyer mengambil semua order milik buyer dengan pagination.
+	GetOrdersByBuyer(ctx context.Context, buyerID string, limit, offset int) ([]*domain.Order, int, error)
 	UpdateOrderStatus(ctx context.Context, orderID string, status domain.OrderStatus) error
+
+	// ConfirmOrderPayment konfirmasi pembayaran atomik; return ErrLostSeat jika tiket sudah direbut.
+	ConfirmOrderPayment(ctx context.Context, orderID string) error
+	// HasAdmittedUnits true jika minimal 1 tiket sudah di-scan gerbang (blokir refund).
+	HasAdmittedUnits(ctx context.Context, orderID string) (bool, error)
 
 	CreatePayment(ctx context.Context, p *domain.Payment) error
 	GetPaymentByOrderID(ctx context.Context, orderID string) (*domain.Payment, error)
@@ -20,6 +28,23 @@ type OrderRepository interface {
 
 	// GetBuyerEmail dipakai saat buat Xendit invoice.
 	GetBuyerEmail(ctx context.Context, buyerID string) (string, error)
+
+	// GetEventDate mengambil tanggal event untuk validasi batas waktu refund H-1.
+	GetEventDate(ctx context.Context, eventID string) (time.Time, error)
+
+	// GetRefundRequestsByOrganizer mengambil daftar permintaan refund untuk event milik organizer.
+	GetRefundRequestsByOrganizer(ctx context.Context, organizerID string, limit, offset int) ([]*RefundRequestItem, int, error)
+}
+
+type RefundRequestItem struct {
+	OrderID     string             `json:"order_id"`
+	BuyerID     string             `json:"buyer_id"`
+	BuyerEmail  string             `json:"buyer_email"`
+	EventID     string             `json:"event_id"`
+	EventName   string             `json:"event_name"`
+	Status      domain.OrderStatus `json:"status"`
+	TotalAmount int64              `json:"total_amount"`
+	CreatedAt   time.Time          `json:"created_at"`
 }
 
 // PaymentProvider abstraksi ke payment gateway (Xendit).

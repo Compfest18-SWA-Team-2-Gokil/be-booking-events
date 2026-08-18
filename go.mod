@@ -1,4 +1,4 @@
-module github.com/ebk-tech/be-booking-events
+module github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events
 
 go 1.26.3
 

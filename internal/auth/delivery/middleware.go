@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ebk-tech/be-booking-events/internal/auth/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
+	"github.com/redis/go-redis/v9"
 )
 
 type contextKey string
@@ -28,21 +29,34 @@ func RoleFromCtx(ctx context.Context) string {
 }
 
 // AuthMiddleware memvalidasi JWT dari header Authorization: Bearer <token>.
-// Jika valid, set user_id dan role ke dalam context.
-func AuthMiddleware(tokenProvider application.TokenProvider) func(http.Handler) http.Handler {
+// Penggunaan Bearer-only token secara arsitektural mengeliminasi risiko serangan CSRF (Cross-Site Request Forgery).
+func AuthMiddleware(tokenProvider application.TokenProvider, redisClient *redis.Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var tokenStr string
 			authHeader := r.Header.Get("Authorization")
-			if !strings.HasPrefix(authHeader, "Bearer ") {
-				writeError(w, http.StatusUnauthorized, "Authorization header wajib diisi")
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				tokenStr = strings.TrimPrefix(authHeader, "Bearer ")
+			}
+
+			if tokenStr == "" {
+				writeError(w, http.StatusUnauthorized, "Authorization token wajib disertakan (format: Bearer <token>)")
 				return
 			}
 
-			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 			userID, role, err := tokenProvider.Verify(tokenStr)
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "token tidak valid atau sudah kadaluarsa")
 				return
+			}
+
+			// Cek apakah token sudah di-logout (ada di Redis blocklist jika Redis tersedia).
+			if redisClient != nil {
+				blocklisted, _ := redisClient.Exists(r.Context(), "jwt_blocklist:"+tokenStr).Result()
+				if blocklisted > 0 {
+					writeError(w, http.StatusUnauthorized, "token sudah tidak valid, silakan login kembali")
+					return
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), ContextKeyUserID, userID)

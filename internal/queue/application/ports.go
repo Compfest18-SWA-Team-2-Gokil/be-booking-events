@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/queue/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/domain"
 )
 
 // QueueRepository mengelola state antrean di Redis.

@@ -3,7 +3,7 @@ package application_test
 import (
 	"context"
 
-	"github.com/ebk-tech/be-booking-events/internal/dashboard/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/application"
 )
 
 type fakeMetricsRepo struct {

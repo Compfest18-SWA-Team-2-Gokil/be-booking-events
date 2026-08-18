@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "BE Booking Events API",
-    "description": "Collection lengkap untuk testing manual semua endpoint",
+    "description": "Collection lengkap untuk testing manual semua endpoint. Login otomatis menyimpan token ke variabel koleksi.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -9,10 +9,12 @@
     { "key": "buyer_token", "value": "" },
     { "key": "organizer_token", "value": "" },
     { "key": "gate_token", "value": "" },
+    { "key": "admin_token", "value": "" },
     { "key": "event_id", "value": "" },
     { "key": "ticket_type_id", "value": "" },
-    { "key": "unit_ids", "value": "" },
-    { "key": "order_id", "value": "" }
+    { "key": "unit_ids", "value": "[]" },
+    { "key": "order_id", "value": "" },
+    { "key": "xendit_callback_token", "value": "dev-xendit-callback-token" }
   ],
   "item": [
     {
@@ -26,32 +28,45 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"buyer@example.com\",\n  \"name\": \"Test Buyer\",\n  \"password\": \"password123\"\n}"
+              "raw": "{\n  \"email\": \"buyer@example.com\",\n  \"name\": \"Test Buyer\",\n  \"password\": \"password123\",\n  \"role\": \"BUYER\"\n}"
             }
           }
         },
         {
-          "name": "Register (Organizer seed)",
+          "name": "Register (Organizer)",
           "request": {
             "method": "POST",
             "url": "{{base_url}}/api/v1/auth/register",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"organizer@example.com\",\n  \"name\": \"Test Organizer\",\n  \"password\": \"password123\"\n}"
+              "raw": "{\n  \"email\": \"organizer@example.com\",\n  \"name\": \"Test Organizer\",\n  \"password\": \"password123\",\n  \"role\": \"ORGANIZER\"\n}"
             }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "// Setelah register, set role ORGANIZER via DB manual:",
-                  "// UPDATE users SET role='ORGANIZER' WHERE email='organizer@example.com';"
-                ]
-              }
+          }
+        },
+        {
+          "name": "Register (Gate Operator)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"gate@example.com\",\n  \"name\": \"Test Gate\",\n  \"password\": \"password123\",\n  \"role\": \"GATE_OPERATOR\"\n}"
             }
-          ]
+          }
+        },
+        {
+          "name": "Register (Admin)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"name\": \"Super Admin\",\n  \"password\": \"password123\",\n  \"role\": \"ADMIN\"\n}"
+            }
+          }
         },
         {
           "name": "Login (Buyer)",
@@ -70,7 +85,8 @@
               "script": {
                 "exec": [
                   "var json = pm.response.json();",
-                  "pm.collectionVariables.set('buyer_token', json.token);"
+                  "if (json.token) pm.collectionVariables.set('buyer_token', json.token);",
+                  "pm.test('Login buyer berhasil', () => pm.response.to.have.status(200));"
                 ]
               }
             }
@@ -93,37 +109,22 @@
               "script": {
                 "exec": [
                   "var json = pm.response.json();",
-                  "pm.collectionVariables.set('organizer_token', json.token);"
+                  "if (json.token) pm.collectionVariables.set('organizer_token', json.token);",
+                  "pm.test('Login organizer berhasil', () => pm.response.to.have.status(200));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "Me",
-          "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/v1/auth/me",
-            "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }]
-          }
-        }
-      ]
-    },
-    {
-      "name": "Events",
-      "item": [
-        {
-          "name": "Create Event",
+          "name": "Login (Gate Operator)",
           "request": {
             "method": "POST",
-            "url": "{{base_url}}/api/v1/events",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
-            ],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Konser Jakarta 2027\",\n  \"date\": \"2027-06-15T19:00:00+07:00\",\n  \"location\": \"GBK Jakarta\"\n}"
+              "raw": "{\n  \"email\": \"gate@example.com\",\n  \"password\": \"password123\"\n}"
             }
           },
           "event": [
@@ -132,18 +133,240 @@
               "script": {
                 "exec": [
                   "var json = pm.response.json();",
-                  "pm.collectionVariables.set('event_id', json.id);"
+                  "if (json.token) pm.collectionVariables.set('gate_token', json.token);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "List Events",
+          "name": "Login (Admin)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.token) pm.collectionVariables.set('admin_token', json.token);",
+                  "pm.test('Login admin berhasil', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me (whoami)",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/v1/events",
+            "url": "{{base_url}}/api/v1/auth/me",
             "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Me returns user data', () => pm.response.to.have.status(200));",
+                  "pm.test('Has id field', () => pm.expect(pm.response.json()).to.have.property('id'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/auth/logout",
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Logout berhasil', () => pm.response.to.have.status(200));",
+                  "pm.test('Status logged_out', () => pm.expect(pm.response.json().status).to.eql('logged_out'));",
+                  "// Setelah logout, token di-blacklist di Redis. Request berikutnya pakai token ini akan 401.",
+                  "pm.collectionVariables.set('buyer_token', '');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "List Disputes",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/disputes",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('List disputes 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has disputes array', () => pm.expect(pm.response.json()).to.have.property('disputes'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Override Order Status",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/admin/orders/{{order_id}}/override",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CANCELLED\",\n  \"reason\": \"Kompensasi payment discrepancy — seat tidak tersedia saat event\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Override berhasil', () => pm.response.to.have.status(200));",
+                  "// Action ini tercatat permanen di audit_logs DB"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Audit Logs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/audit-logs?limit=50",
+              "query": [{ "key": "limit", "value": "50", "description": "Max 100" }]
+            },
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Audit logs 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has audit_logs array', () => pm.expect(pm.response.json()).to.have.property('audit_logs'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Disputes - Forbidden (Buyer)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/admin/disputes",
+            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Buyer ditolak 403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Events",
+      "item": [
+        {
+          "name": "List Events (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/events"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('List events 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create Event (multipart + foto wajib)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/events",
+            "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "name", "value": "Konser Jakarta 2027", "type": "text" },
+                { "key": "description", "value": "Konser musik terbesar tahun ini", "type": "text" },
+                { "key": "category", "value": "music", "type": "text" },
+                { "key": "date", "value": "2027-06-15T19:00:00+07:00", "type": "text" },
+                { "key": "location", "value": "GBK Jakarta", "type": "text" },
+                { "key": "image", "type": "file", "src": "", "description": "Pilih file gambar (JPEG/PNG/WebP, maks 5MB)" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set('event_id', json.id);",
+                  "pm.test('Create event 201', () => pm.response.to.have.status(201));",
+                  "pm.test('Has image_url', () => pm.expect(json).to.have.property('image_url'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Event (Public)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}"
+          }
+        },
+        {
+          "name": "Update Event",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/v1/events/{{event_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{organizer_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Konser Jakarta 2027 — Updated\",\n  \"date\": \"2027-06-15T20:00:00+07:00\",\n  \"location\": \"GBK Jakarta\",\n  \"category\": \"music\"\n}"
+            }
           }
         },
         {
@@ -155,10 +378,21 @@
             "body": {
               "mode": "formdata",
               "formdata": [
-                { "key": "image", "type": "file", "src": "" }
+                { "key": "image", "type": "file", "src": "", "description": "JPEG/PNG/WebP maks 5MB" }
               ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Upload image 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has image_url', () => pm.expect(pm.response.json()).to.have.property('image_url'));"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Create Ticket Type",
@@ -180,18 +414,18 @@
               "script": {
                 "exec": [
                   "var json = pm.response.json();",
-                  "pm.collectionVariables.set('ticket_type_id', json.id);"
+                  "if (json.id) pm.collectionVariables.set('ticket_type_id', json.id);",
+                  "pm.test('Create ticket type 201', () => pm.response.to.have.status(201));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "List Ticket Types",
+          "name": "List Ticket Types (Public)",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/v1/events/{{event_id}}/ticket-types",
-            "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
+            "url": "{{base_url}}/api/v1/events/{{event_id}}/ticket-types"
           }
         },
         {
@@ -207,7 +441,17 @@
               "mode": "raw",
               "raw": "{\n  \"quantity\": 1000\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Provision 201', () => pm.response.to.have.status(201));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -234,11 +478,29 @@
               "script": {
                 "exec": [
                   "var json = pm.response.json();",
-                  "pm.collectionVariables.set('unit_ids', JSON.stringify(json.unit_ids));"
+                  "if (json.unit_ids) pm.collectionVariables.set('unit_ids', JSON.stringify(json.unit_ids));",
+                  "pm.test('Hold tiket 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has unit_ids', () => pm.expect(json.unit_ids).to.be.an('array').that.is.not.empty);"
                 ]
               }
             }
           ]
+        },
+        {
+          "name": "Hold Ticket (+ Queue Token)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/tickets/hold",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{buyer_token}}" },
+              { "key": "X-Queue-Token", "value": "<queue-token-dari-status>", "description": "Wajib saat event dalam mode antrian" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"ticket_type_id\": \"{{ticket_type_id}}\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            }
+          }
         }
       ]
     },
@@ -253,7 +515,7 @@
             "header": [
               { "key": "Content-Type", "value": "application/json" },
               { "key": "Authorization", "value": "Bearer {{buyer_token}}" },
-              { "key": "Idempotency-Key", "value": "order-unique-key-001" }
+              { "key": "Idempotency-Key", "value": "order-unique-key-001", "description": "Ganti jika ingin buat order baru" }
             ],
             "body": {
               "mode": "raw",
@@ -266,7 +528,8 @@
               "script": {
                 "exec": [
                   "var json = pm.response.json();",
-                  "pm.collectionVariables.set('order_id', json.id);"
+                  "if (json.id) pm.collectionVariables.set('order_id', json.id);",
+                  "pm.test('Create order 201', () => pm.response.to.have.status(201));"
                 ]
               }
             }
@@ -289,7 +552,19 @@
               { "key": "Authorization", "value": "Bearer {{buyer_token}}" },
               { "key": "Idempotency-Key", "value": "pay-unique-key-001" }
             ]
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Initiate payment 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has invoice_url', () => pm.expect(pm.response.json()).to.have.property('invoice_url'));",
+                  "// Buka invoice_url di browser untuk bayar via Xendit"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Xendit Webhook (simulate PAID)",
@@ -304,6 +579,31 @@
               "mode": "raw",
               "raw": "{\n  \"id\": \"xendit-invoice-id\",\n  \"external_id\": \"{{order_id}}\",\n  \"status\": \"PAID\",\n  \"payment_method\": \"CREDIT_CARD\"\n}"
             }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Webhook diproses 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Xendit Webhook (simulate EXPIRED)",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/v1/payments/webhook/xendit",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-callback-token", "value": "{{xendit_callback_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"xendit-invoice-id\",\n  \"external_id\": \"{{order_id}}\",\n  \"status\": \"EXPIRED\"\n}"
+            }
           }
         },
         {
@@ -312,7 +612,18 @@
             "method": "POST",
             "url": "{{base_url}}/api/v1/orders/{{order_id}}/refund",
             "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// 200 jika belum ada tiket admitted",
+                  "// 409 jika tiket sudah dipakai masuk gerbang"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Approve Refund (Organizer)",
@@ -333,7 +644,18 @@
             "method": "GET",
             "url": "{{base_url}}/api/v1/events/{{event_id}}/metrics",
             "header": [{ "key": "Authorization", "value": "Bearer {{organizer_token}}" }]
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Metrics 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has metrics array', () => pm.expect(pm.response.json()).to.have.property('metrics'));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -406,7 +728,7 @@
           }
         },
         {
-          "name": "Queue Status",
+          "name": "Queue Status (polling)",
           "request": {
             "method": "GET",
             "url": {
@@ -414,7 +736,19 @@
               "query": [{ "key": "user_id", "value": "<buyer-user-id>" }]
             },
             "header": [{ "key": "Authorization", "value": "Bearer {{buyer_token}}" }]
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Jika status=ready, queue_token ada di response",
+                  "var json = pm.response.json();",
+                  "if (json.queue_token) console.log('Queue token:', json.queue_token);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Validate Queue Token",

@@ -3,9 +3,10 @@ package application_test
 import (
 	"context"
 	"errors"
+	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/application"
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type fakeOrderRepo struct {
@@ -22,7 +23,7 @@ func newFakeOrderRepo() *fakeOrderRepo {
 	}
 }
 
-func (r *fakeOrderRepo) CreateOrder(_ context.Context, buyerID, eventID string, unitIDs []string) (*domain.Order, error) {
+func (r *fakeOrderRepo) CreateOrder(_ context.Context, buyerID, eventID string, unitIDs []string, promoCode string) (*domain.Order, error) {
 	if len(unitIDs) == 0 {
 		return nil, domain.ErrNoHeldUnits
 	}
@@ -43,6 +44,24 @@ func (r *fakeOrderRepo) GetOrder(_ context.Context, orderID string) (*domain.Ord
 		return nil, domain.ErrOrderNotFound
 	}
 	return o, nil
+}
+
+func (r *fakeOrderRepo) GetOrdersByBuyer(_ context.Context, buyerID string, _, _ int) ([]*domain.Order, int, error) {
+	var list []*domain.Order
+	for _, o := range r.orders {
+		if o.BuyerID == buyerID {
+			list = append(list, o)
+		}
+	}
+	return list, len(list), nil
+}
+
+func (r *fakeOrderRepo) GetEventDate(_ context.Context, _ string) (time.Time, error) {
+	return time.Now().Add(48 * time.Hour), nil // Default H+2 (valid refund)
+}
+
+func (r *fakeOrderRepo) GetRefundRequestsByOrganizer(_ context.Context, _ string, _, _ int) ([]*application.RefundRequestItem, int, error) {
+	return nil, 0, nil
 }
 
 func (r *fakeOrderRepo) UpdateOrderStatus(_ context.Context, orderID string, status domain.OrderStatus) error {
@@ -79,6 +98,19 @@ func (r *fakeOrderRepo) GetBuyerEmail(_ context.Context, buyerID string) (string
 		return "", errors.New("user tidak ditemukan")
 	}
 	return email, nil
+}
+
+func (r *fakeOrderRepo) ConfirmOrderPayment(_ context.Context, orderID string) error {
+	o, ok := r.orders[orderID]
+	if !ok {
+		return domain.ErrOrderNotFound
+	}
+	o.Status = domain.OrderStatusPaid
+	return nil
+}
+
+func (r *fakeOrderRepo) HasAdmittedUnits(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
 // fakePaymentProvider

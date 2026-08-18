@@ -1,7 +1,7 @@
 package infrastructure
 
 import (
-	"github.com/ebk-tech/be-booking-events/internal/auth/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
 	"golang.org/x/crypto/bcrypt"
 )
 

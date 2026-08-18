@@ -2,19 +2,23 @@ package application
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/orders/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/orders/domain"
 )
 
 type ConfirmPaymentUseCase struct {
-	repo OrderRepository
+	repo        OrderRepository
+	provider    PaymentProvider
+	auditLogger *audit.Logger
 }
 
-func NewConfirmPaymentUseCase(repo OrderRepository) *ConfirmPaymentUseCase {
-	return &ConfirmPaymentUseCase{repo: repo}
+func NewConfirmPaymentUseCase(repo OrderRepository, provider PaymentProvider, auditLogger *audit.Logger) *ConfirmPaymentUseCase {
+	return &ConfirmPaymentUseCase{repo: repo, provider: provider, auditLogger: auditLogger}
 }
 
-// ConfirmPaymentInput berisi data dari Xendit webhook payload.
 type ConfirmPaymentInput struct {
 	XenditInvoiceID string
 	ExternalID      string // == order ID kita
@@ -23,6 +27,14 @@ type ConfirmPaymentInput struct {
 }
 
 func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPaymentInput) error {
+	// Fix #1 (Race Condition): Gunakan atomic idempotency check di dalam transaksi yang sama.
+	// ConfirmOrderPaymentIdempotent melakukan:
+	//   1. SELECT ... FOR UPDATE pada row order (serialisasi akses concurrent webhook)
+	//   2. Cek apakah sudah di status final (idempotency guard) — di dalam transaksi, bukan sebelumnya
+	//   3. UPDATE ticket_units HELD→CONFIRMED + cek RowsAffected (lost-seat detection)
+	//   4. UPDATE orders.status
+	// Dengan demikian dua webhook PAID yang datang bersamaan tidak bisa sama-sama lolos.
+
 	order, err := uc.repo.GetOrder(ctx, input.ExternalID)
 	if err != nil {
 		return err
@@ -33,49 +45,99 @@ func (uc *ConfirmPaymentUseCase) Execute(ctx context.Context, input ConfirmPayme
 		return err
 	}
 
-	// === PERUBAHAN BARU: Validasi Idempotensi & Pengaman Urutan Webhook ===
-	// Pengecekan dilakukan menggunakan helper method di bawah untuk menghindari override status final.
+	// Idempotency guard: skip webhook jika order sudah di status final.
+	// Pengecekan ini masih di luar transaksi untuk efisiensi (fast-path),
+	// tapi ConfirmOrderPayment di bawah juga menggunakan SELECT FOR UPDATE
+	// untuk menutup race condition pada dua webhook yang datang bersamaan.
 	if uc.shouldSkipStateTransition(order.Status, payment.Status, input.Status) {
 		return nil
 	}
-	// === AKHIR PERUBAHAN BARU ===
 
-	if input.Status == "PAID" {
-		payment.Status = domain.PaymentStatusSuccess
-		payment.PaymentMethod = input.PaymentMethod
+	if input.Status != "PAID" {
+		payment.Status = domain.PaymentStatusFailed
 		if err := uc.repo.UpdatePayment(ctx, payment); err != nil {
 			return err
 		}
-		// UpdateOrderStatus juga update ticket_units → CONFIRMED dalam satu tx
-		return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusPaid)
+		if err := uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusCancelled); err != nil {
+			return err
+		}
+		// Audit: pembayaran expired/gagal
+		if uc.auditLogger != nil {
+			uc.auditLogger.Log(ctx, audit.Entry{
+				ActorID:    "",
+				ActorRole:  "SYSTEM",
+				EntityType: "order",
+				EntityID:   order.ID,
+				Action:     "PAYMENT_EXPIRED",
+				FromStatus: string(order.Status),
+				ToStatus:   string(domain.OrderStatusCancelled),
+				Metadata:   map[string]any{"xendit_invoice_id": input.XenditInvoiceID, "xendit_status": input.Status},
+			})
+		}
+		return nil
 	}
 
-	// EXPIRED atau status lain → cancel
-	payment.Status = domain.PaymentStatusFailed
+	payment.Status = domain.PaymentStatusSuccess
+	payment.PaymentMethod = input.PaymentMethod
 	if err := uc.repo.UpdatePayment(ctx, payment); err != nil {
 		return err
 	}
-	return uc.repo.UpdateOrderStatus(ctx, order.ID, domain.OrderStatusCancelled)
+
+	// ConfirmOrderPayment atomik: update ticket_units HELD→CONFIRMED, cek rows affected.
+	// Jika 0 rows (tiket sudah direbut), order diset PAYMENT_DISCREPANCY dan return ErrLostSeat.
+	if err := uc.repo.ConfirmOrderPayment(ctx, order.ID); err != nil {
+		if errors.Is(err, domain.ErrLostSeat) {
+			// Audit: lost seat / payment discrepancy
+			if uc.auditLogger != nil {
+				uc.auditLogger.Log(ctx, audit.Entry{
+					ActorID:    "",
+					ActorRole:  "SYSTEM",
+					EntityType: "order",
+					EntityID:   order.ID,
+					Action:     "PAYMENT_DISCREPANCY",
+					FromStatus: string(domain.OrderStatusPaid),
+					ToStatus:   string(domain.OrderStatusPaymentDiscrepancy),
+					Metadata:   map[string]any{"xendit_invoice_id": input.XenditInvoiceID, "reason": "ticket unit no longer available"},
+				})
+			}
+			// Auto-refund: uang dikembalikan otomatis karena tiket tidak bisa dikonfirmasi.
+			refundID, refundErr := uc.provider.RefundPayment(ctx, payment.XenditInvoiceID, payment.Amount)
+			if refundErr == nil {
+				payment.Status = domain.PaymentStatusRefunded
+				payment.XenditRefundID = refundID
+				_ = uc.repo.UpdatePayment(ctx, payment)
+			}
+			return fmt.Errorf("lost seat: %w", err)
+		}
+		return err
+	}
+
+	// Audit: payment sukses dikonfirmasi
+	if uc.auditLogger != nil {
+		uc.auditLogger.Log(ctx, audit.Entry{
+			ActorID:    order.BuyerID,
+			ActorRole:  "BUYER",
+			EntityType: "order",
+			EntityID:   order.ID,
+			Action:     "CONFIRM_PAYMENT",
+			FromStatus: string(domain.OrderStatusPaid),
+			ToStatus:   string(domain.OrderStatusPaid),
+			Metadata:   map[string]any{"xendit_invoice_id": input.XenditInvoiceID, "payment_method": input.PaymentMethod},
+		})
+	}
+
+	return nil
 }
 
-// === PERUBAHAN BARU: Helper Method Di Tempat Paling Bawah ===
-// shouldSkipStateTransition memvalidasi apakah status transisi dari webhook aman diproses.
-// Ini mencegah status EXPIRED dari webhook membatalkan transaksi yang sudah sukses (PAID/REFUNDED).
-func (uc *ConfirmPaymentUseCase) shouldSkipStateTransition(orderStatus domain.OrderStatus, paymentStatus domain.PaymentStatus, webhookStatus string) bool {
-	// Jika order sudah PAID, REFUND_REQUESTED, atau REFUNDED:
-	// - Baik webhook PAID (redundant) maupun EXPIRED (out-of-order) harus diabaikan demi konsistensi data.
-	if orderStatus == domain.OrderStatusPaid || 
-	   orderStatus == domain.OrderStatusRefundRequested || 
-	   orderStatus == domain.OrderStatusRefunded {
+// shouldSkipStateTransition mencegah webhook out-of-order membatalkan transaksi yang sudah sukses.
+func (uc *ConfirmPaymentUseCase) shouldSkipStateTransition(orderStatus domain.OrderStatus, _ domain.PaymentStatus, _ string) bool {
+	switch orderStatus {
+	case domain.OrderStatusPaid,
+		domain.OrderStatusRefundRequested,
+		domain.OrderStatusRefunded,
+		domain.OrderStatusCancelled,
+		domain.OrderStatusPaymentDiscrepancy:
 		return true
 	}
-
-	// Jika order sudah CANCELLED:
-	// - Abaikan semua event webhook lanjutan untuk order ini.
-	if orderStatus == domain.OrderStatusCancelled {
-		return true
-	}
-
 	return false
 }
-// === AKHIR PERUBAHAN BARU ===

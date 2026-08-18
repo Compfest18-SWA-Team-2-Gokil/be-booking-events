@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/events/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/domain"
 )
 
 type ProvisionUnitsUseCase struct {

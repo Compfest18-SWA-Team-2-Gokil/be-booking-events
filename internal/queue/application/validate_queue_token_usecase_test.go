@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/queue/application"
-	"github.com/ebk-tech/be-booking-events/internal/queue/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/domain"
 )
 
 func TestValidateQueueTokenUseCase_Execute_Valid(t *testing.T) {

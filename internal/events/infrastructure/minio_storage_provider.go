@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ebk-tech/be-booking-events/internal/events/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/application"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/inventory/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 )
 
 // HoldRequest merepresentasikan satu item dalam permintaan hold.

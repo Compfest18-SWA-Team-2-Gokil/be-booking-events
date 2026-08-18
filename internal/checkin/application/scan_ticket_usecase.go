@@ -3,16 +3,18 @@ package application
 import (
 	"context"
 
-	"github.com/ebk-tech/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
 )
 
 type ScanTicketUseCase struct {
-	repo   CheckinRepository
-	signer QRSigner
+	repo        CheckinRepository
+	signer      QRSigner
+	auditLogger *audit.Logger
 }
 
-func NewScanTicketUseCase(repo CheckinRepository, signer QRSigner) *ScanTicketUseCase {
-	return &ScanTicketUseCase{repo: repo, signer: signer}
+func NewScanTicketUseCase(repo CheckinRepository, signer QRSigner, auditLogger *audit.Logger) *ScanTicketUseCase {
+	return &ScanTicketUseCase{repo: repo, signer: signer, auditLogger: auditLogger}
 }
 
 type ScanTicketInput struct {
@@ -47,6 +49,22 @@ func (uc *ScanTicketUseCase) Execute(ctx context.Context, input ScanTicketInput)
 	// Atomic UPDATE: CONFIRMED → ADMITTED. Jika 0 baris → sudah dipakai atau bukan CONFIRMED.
 	if err := uc.repo.AdmitUnit(ctx, payload.TicketUnitID, input.GateOperatorID); err != nil {
 		return nil, err
+	}
+
+	// Audit: tiket sukses di-scan dan admitted
+	if uc.auditLogger != nil {
+		uc.auditLogger.Log(ctx, audit.Entry{
+			ActorID:    input.GateOperatorID,
+			ActorRole:  "GATE_OPERATOR",
+			EntityType: "ticket_unit",
+			EntityID:   payload.TicketUnitID,
+			Action:     "ADMITTED",
+			FromStatus: "CONFIRMED",
+			ToStatus:   "ADMITTED",
+			Metadata: map[string]any{
+				"event_id": payload.EventID,
+			},
+		})
 	}
 
 	return &ScanTicketOutput{

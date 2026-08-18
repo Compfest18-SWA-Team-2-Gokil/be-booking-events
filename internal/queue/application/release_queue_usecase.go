@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/ebk-tech/be-booking-events/internal/queue/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/domain"
 )
 
 // TokenTTL adalah masa berlaku queue token setelah user di-release dari antrean.
