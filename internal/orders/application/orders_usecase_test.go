@@ -53,7 +53,7 @@ func TestInitiatePaymentUseCase_Success(t *testing.T) {
 	}
 	repo.emails["buyer-1"] = "buyer@test.com"
 
-	uc := application.NewInitiatePaymentUseCase(repo, &fakePaymentProvider{})
+	uc := application.NewInitiatePaymentUseCase(repo, &fakePaymentProvider{}, "http://localhost:5173")
 	out, err := uc.Execute(context.Background(), "order-1", "buyer-1")
 
 	if err != nil {
@@ -73,7 +73,7 @@ func TestInitiatePaymentUseCase_WrongBuyer(t *testing.T) {
 		ID: "order-1", BuyerID: "buyer-1", Status: domain.OrderStatusPending,
 	}
 
-	uc := application.NewInitiatePaymentUseCase(repo, &fakePaymentProvider{})
+	uc := application.NewInitiatePaymentUseCase(repo, &fakePaymentProvider{}, "http://localhost:5173")
 	_, err := uc.Execute(context.Background(), "order-1", "buyer-lain")
 
 	if err != domain.ErrOrderNotFound {

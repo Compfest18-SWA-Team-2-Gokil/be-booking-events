@@ -54,10 +54,12 @@ type PaymentProvider interface {
 }
 
 type CreateInvoiceInput struct {
-	ExternalID  string // order ID kita sebagai reference
-	Amount      int64
-	PayerEmail  string
-	Description string
+	ExternalID         string // order ID kita sebagai reference
+	Amount             int64
+	PayerEmail         string
+	Description        string
+	SuccessRedirectURL string // halaman sukses setelah bayar
+	FailureRedirectURL string // halaman gagal/expired setelah bayar
 }
 
 type InvoiceResult struct {

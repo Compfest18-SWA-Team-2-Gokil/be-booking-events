@@ -159,6 +159,9 @@ func (r *PostgresOrderRepository) CreateOrder(ctx context.Context, buyerID, even
 }
 
 func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) (*domain.Order, error) {
+	if len(orderID) != 36 {
+		return nil, domain.ErrOrderNotFound
+	}
 	o := &domain.Order{}
 	err := r.pool.QueryRow(ctx, `
 		SELECT 

@@ -187,6 +187,11 @@ func (h *OrdersHandler) XenditWebhook(w http.ResponseWriter, r *http.Request) {
 		Status:          payload.Status,
 	})
 	if err != nil {
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			// Jika order tidak ditemukan (misal dummy external_id dari tombol 'Test' dashboard Xendit), kembalikan 200 OK
+			writeJSON(w, http.StatusOK, map[string]string{"message": "webhook received (order not found / test callback)"})
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "gagal konfirmasi pembayaran")
 		return
 	}

@@ -37,13 +37,16 @@ var _ application.PaymentProvider = (*XenditPaymentProvider)(nil)
 
 func (p *XenditPaymentProvider) CreateInvoice(ctx context.Context, input application.CreateInvoiceInput) (*application.InvoiceResult, error) {
 	body, _ := json.Marshal(map[string]any{
-		"external_id":  input.ExternalID,
-		"amount":       input.Amount,
-		"payer_email":  input.PayerEmail,
-		"description":  input.Description,
-		"currency":     "IDR",
-		"invoice_duration": 3600, 
+		"external_id":          input.ExternalID,
+		"amount":               input.Amount,
+		"payer_email":          input.PayerEmail,
+		"description":          input.Description,
+		"currency":             "IDR",
+		"invoice_duration":     3600,
+		"success_redirect_url": input.SuccessRedirectURL,
+		"failure_redirect_url": input.FailureRedirectURL,
 	})
+
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		p.getBaseURL()+"/v2/invoices", bytes.NewReader(body))
