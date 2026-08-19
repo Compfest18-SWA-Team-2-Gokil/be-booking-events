@@ -127,24 +127,18 @@ func (r *PostgresTicketRepository) HoldAvailableUnits(
 }
 
 // ExpireHeldUnits dipakai oleh cleanup worker (SKIP LOCKED agar tidak block transaksi aktif).
-// Me-release unit HELD dan menandai orders terkait sebagai CANCELLED.
+// Me-release unit HELD yang sudah kadaluarsa ke AVAILABLE.
+// Pembatalan order ditangani oleh orders module secara terpisah.
 func (r *PostgresTicketRepository) ExpireHeldUnits(ctx context.Context) (int, error) {
 	tag, err := r.pool.Exec(ctx, `
-		WITH expired_units AS (
-			UPDATE ticket_units
-			SET status = 'AVAILABLE', held_until = NULL, order_id = NULL, updated_at = NOW()
-			WHERE id IN (
-				SELECT id FROM ticket_units
-				WHERE status = 'HELD'
-				  AND held_until < NOW()
-				FOR UPDATE SKIP LOCKED
-			)
-			RETURNING order_id
+		UPDATE ticket_units
+		SET status = 'AVAILABLE', held_until = NULL, order_id = NULL, updated_at = NOW()
+		WHERE id IN (
+			SELECT id FROM ticket_units
+			WHERE status = 'HELD'
+			  AND held_until < NOW()
+			FOR UPDATE SKIP LOCKED
 		)
-		UPDATE orders
-		SET status = 'CANCELLED', updated_at = NOW()
-		WHERE id IN (SELECT order_id FROM expired_units WHERE order_id IS NOT NULL)
-		  AND status IN ('PENDING', 'PAYMENT_PENDING')
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("expire held units: %w", err)
