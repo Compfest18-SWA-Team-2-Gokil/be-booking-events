@@ -11,6 +11,7 @@ import (
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/appconfig"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
 )
@@ -103,7 +104,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			errors.Is(err, domain.ErrInvalidUsername):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
-			writeInternalError(w, err)
+			writeInternalError(w, r, err)
 		}
 		return
 	}
@@ -126,7 +127,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, err.Error())
 			return
 		}
-		writeInternalError(w, err)
+		writeInternalError(w, r, err)
 		return
 	}
 
@@ -218,7 +219,7 @@ func (h *AuthHandler) AssignGateOperator(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, domain.ErrNotEventOrganizer):
 			writeError(w, http.StatusForbidden, err.Error())
 		default:
-			writeInternalError(w, err)
+			writeInternalError(w, r, err)
 		}
 		return
 	}
@@ -236,7 +237,7 @@ func (h *AuthHandler) ListGateOperators(w http.ResponseWriter, r *http.Request) 
 		case errors.Is(err, domain.ErrNotEventOrganizer):
 			writeError(w, http.StatusForbidden, err.Error())
 		default:
-			writeInternalError(w, err)
+			writeInternalError(w, r, err)
 		}
 		return
 	}
@@ -257,7 +258,7 @@ func (h *AuthHandler) RemoveGateOperator(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, domain.ErrUserNotFound):
 			writeError(w, http.StatusNotFound, "assignment tidak ditemukan")
 		default:
-			writeInternalError(w, err)
+			writeInternalError(w, r, err)
 		}
 		return
 	}
@@ -270,7 +271,7 @@ func (h *AuthHandler) SearchGateOperators(w http.ResponseWriter, r *http.Request
 
 	users, err := h.searchGateOpUC.Execute(r.Context(), query)
 	if err != nil {
-		writeInternalError(w, err)
+		writeInternalError(w, r, err)
 		return
 	}
 
@@ -294,7 +295,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func writeInternalError(w http.ResponseWriter, err error) {
+func writeInternalError(w http.ResponseWriter, r *http.Request, err error) {
+	errorlog.SetError(r.Context(), err)
 	msg := "internal server error"
 	if appconfig.IsDebug() {
 		msg = err.Error()

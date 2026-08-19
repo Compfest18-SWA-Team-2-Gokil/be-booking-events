@@ -14,6 +14,7 @@ import (
 	admindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/delivery"
 	admininfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/infrastructure"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	authapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	authinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/infrastructure"
@@ -142,6 +143,14 @@ func main() {
 
 	// --- Audit Logger (shared across modules for immutable event trail) ---
 	auditLogger := audit.NewLogger(pool)
+
+	// --- Error File Logger (only active when APP_DEBUG=true) ---
+	errorFileLogger, err := errorlog.NewLogger()
+	if err != nil {
+		slog.Error("gagal inisialisasi error file logger", "err", err)
+		os.Exit(1)
+	}
+	defer errorFileLogger.Close()
 
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
@@ -272,6 +281,8 @@ func main() {
 			next.ServeHTTP(w, r)
 		})
 	})
+
+	r.Use(appmiddleware.ErrorLogger(errorFileLogger))
 
 	routes.Register(r, routes.Deps{
 		AuthMiddleware:      authdelivery.AuthMiddleware(tokenProvider, redisClient),

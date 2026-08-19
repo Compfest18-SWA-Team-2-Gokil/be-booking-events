@@ -8,6 +8,7 @@ import (
 
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/application"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -47,6 +48,7 @@ func (h *AdminHandler) ListDisputes(w http.ResponseWriter, r *http.Request) {
 
 	disputes, total, err := h.listDisputesUC.Execute(r.Context(), limit, offset)
 	if err != nil {
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "gagal mengambil data dispute")
 		return
 	}
@@ -91,6 +93,7 @@ func (h *AdminHandler) OverrideOrder(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "gagal override order")
 		return
 	}
@@ -129,6 +132,7 @@ func (h *AdminHandler) ReassignTicket(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, application.ErrTargetOrderRequired), errors.Is(err, application.ErrReasonRequired):
 			writeError(w, http.StatusBadRequest, err.Error())
 		default:
+			errorlog.SetError(r.Context(), err)
 			writeError(w, http.StatusInternalServerError, err.Error())
 		}
 		return
@@ -154,6 +158,7 @@ func (h *AdminHandler) ListAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	logs, total, err := h.listAuditLogsUC.Execute(r.Context(), limit, offset)
 	if err != nil {
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "gagal mengambil data audit logs")
 		return
 	}

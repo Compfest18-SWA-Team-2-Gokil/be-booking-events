@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/domain"
 	"github.com/go-chi/chi/v5"
@@ -50,6 +51,7 @@ func (h *QueueHandler) JoinQueue(w http.ResponseWriter, r *http.Request) {
 
 	rate, err := h.repo.IncrRequestRate(r.Context(), eventID)
 	if err != nil {
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -65,6 +67,7 @@ func (h *QueueHandler) JoinQueue(w http.ResponseWriter, r *http.Request) {
 		UserID:  req.UserID,
 	})
 	if err != nil {
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "gagal masuk antrean")
 		return
 	}
@@ -88,6 +91,7 @@ func (h *QueueHandler) GetQueueStatus(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.repo.GetToken(r.Context(), eventID, userID)
 	if err != nil {
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
