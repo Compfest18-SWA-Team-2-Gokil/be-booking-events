@@ -9,6 +9,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -48,6 +49,9 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Unit tests (no DB required)
         run: |
           go test \
@@ -56,6 +60,10 @@ jobs:
             ./internal/auth/domain/... \
             ./internal/auth/application/... \
             ./internal/orders/application/... \
+            ./internal/orders/infrastructure/... \
+            ./internal/checkin/application/... \
+            ./internal/dashboard/application/... \
+            ./internal/events/application/... \
             -count=1 -v -timeout 30s
 
       - name: Integration tests (requires Postgres)
