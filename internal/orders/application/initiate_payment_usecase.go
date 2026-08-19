@@ -8,12 +8,17 @@ import (
 )
 
 type InitiatePaymentUseCase struct {
-	repo     OrderRepository
-	provider PaymentProvider
+	repo            OrderRepository
+	provider        PaymentProvider
+	frontendBaseURL string
 }
 
-func NewInitiatePaymentUseCase(repo OrderRepository, provider PaymentProvider) *InitiatePaymentUseCase {
-	return &InitiatePaymentUseCase{repo: repo, provider: provider}
+func NewInitiatePaymentUseCase(repo OrderRepository, provider PaymentProvider, frontendBaseURL string) *InitiatePaymentUseCase {
+	baseURL := frontendBaseURL
+	if baseURL == "" {
+		baseURL = "http://localhost:5173"
+	}
+	return &InitiatePaymentUseCase{repo: repo, provider: provider, frontendBaseURL: baseURL}
 }
 
 type InitiatePaymentOutput struct {
@@ -58,10 +63,12 @@ func (uc *InitiatePaymentUseCase) Execute(ctx context.Context, orderID, buyerID 
 	}
 
 	result, err := uc.provider.CreateInvoice(ctx, CreateInvoiceInput{
-		ExternalID:  order.ID,
-		Amount:      order.TotalAmount,
-		PayerEmail:  email,
-		Description: fmt.Sprintf("Pembelian tiket event %s", order.EventID),
+		ExternalID:         order.ID,
+		Amount:             order.TotalAmount,
+		PayerEmail:         email,
+		Description:        fmt.Sprintf("Pembelian tiket event %s", order.EventID),
+		SuccessRedirectURL: fmt.Sprintf("%s/payment/callback?order_id=%s", uc.frontendBaseURL, order.ID),
+		FailureRedirectURL: fmt.Sprintf("%s/payment/callback?order_id=%s", uc.frontendBaseURL, order.ID),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuat invoice: %w", err)

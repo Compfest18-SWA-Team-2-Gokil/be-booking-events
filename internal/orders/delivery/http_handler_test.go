@@ -279,7 +279,7 @@ func TestOrdersHandler_InitiatePayment(t *testing.T) {
 	repo.emails["buyer-123"] = "buyer@test.com"
 
 	provider := &fakePaymentProvider{}
-	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(repo, provider)
+	initiatePayUC := ordersapp.NewInitiatePaymentUseCase(repo, provider, "http://localhost:5173")
 	handler := delivery.NewOrdersHandler(nil, initiatePayUC, nil, nil, nil, nil, repo, "")
 	router := setupTestRouter(handler, &mockTokenProvider{})
 
