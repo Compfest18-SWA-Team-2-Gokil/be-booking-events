@@ -55,5 +55,8 @@ jobs:
             set -e
             sudo chmod +x /opt/ticketing-app/app
             sudo systemctl start ticketing-app
-            sleep 3
-            curl -sf http://localhost:8080/docs > /dev/null && echo "=== Deploy OK ===" || (echo "=== Health check GAGAL ===" && exit 1)
+            for i in $(seq 1 10); do
+              curl -sf http://localhost:8080/docs > /dev/null && echo "=== Deploy OK ===" && exit 0
+              sleep 2
+            done
+            echo "=== Health check GAGAL ===" && exit 1
