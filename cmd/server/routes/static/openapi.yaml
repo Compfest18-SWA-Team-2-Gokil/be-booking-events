@@ -136,6 +136,20 @@ components:
         total_amount:
           type: integer
           description: Total harga dalam rupiah
+          example: 350000
+        promo_code:
+          type: string
+          nullable: true
+          description: Kode voucher promo yang digunakan
+          example: "COMPFEST50K"
+        discount_amount:
+          type: integer
+          description: Total potongan harga diskon promo/voucher
+          example: 50000
+        admitted_count:
+          type: integer
+          description: Jumlah tiket yang sudah di-scan masuk di gate
+          example: 0
         created_at:
           type: string
           format: date-time
@@ -159,11 +173,17 @@ components:
           format: uuid
         email:
           type: string
+          example: "user@example.com"
+        username:
+          type: string
+          example: "gateop1"
         name:
           type: string
+          example: "Gate Operator One"
         role:
           type: string
           enum: [BUYER, ORGANIZER, GATE_OPERATOR, ADMIN]
+          example: "GATE_OPERATOR" 
 
     Event:
       type: object
@@ -1421,9 +1441,14 @@ paths:
                   items:
                     type: string
                     format: uuid
+                promo_code:
+                  type: string
+                  description: Kode voucher diskon belanja (opsional)
+                  example: "COMPFEST50K"
             example:
               event_id: "uuid-event"
               unit_ids: ["uuid-unit-1", "uuid-unit-2"]
+              promo_code: "COMPFEST50K" 
       responses:
         "201":
           description: Order berhasil dibuat
