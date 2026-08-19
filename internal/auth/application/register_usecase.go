@@ -18,6 +18,7 @@ func NewRegisterUseCase(repo UserRepository, hasher PasswordHasher) *RegisterUse
 
 type RegisterInput struct {
 	Email    string
+	Username string
 	Name     string
 	Password string
 	Role     domain.Role
@@ -39,9 +40,10 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (*d
 	}
 
 	user := &domain.User{
-		Email: input.Email,
-		Name:  input.Name,
-		Role:  input.Role,
+		Email:    input.Email,
+		Username: input.Username,
+		Name:     input.Name,
+		Role:     input.Role,
 	}
 	if err := user.Validate(); err != nil {
 		return nil, err
@@ -50,6 +52,11 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, input RegisterInput) (*d
 	existing, _ := uc.repo.FindByEmail(ctx, input.Email)
 	if existing != nil {
 		return nil, domain.ErrEmailAlreadyTaken
+	}
+
+	existingUsername, _ := uc.repo.FindByUsername(ctx, input.Username)
+	if existingUsername != nil {
+		return nil, domain.ErrUsernameAlreadyTaken
 	}
 
 	hash, err := uc.hasher.Hash(input.Password)

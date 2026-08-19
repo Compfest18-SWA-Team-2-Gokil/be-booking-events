@@ -71,6 +71,7 @@ func (r *PostgresCheckinRepository) IsGateOperatorAssigned(ctx context.Context, 
 		SELECT EXISTS (
 			SELECT 1 FROM gate_operator_assignments
 			WHERE user_id = $1 AND event_id = $2
+			  AND status = 'ACTIVE'
 		)
 	`, gateOperatorID, eventID).Scan(&exists)
 	if err != nil {

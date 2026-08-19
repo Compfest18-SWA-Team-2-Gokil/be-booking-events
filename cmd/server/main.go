@@ -147,10 +147,14 @@ func main() {
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
 	passwordHasher := authinfra.NewBcryptPasswordHasher()
 	userRepo := authinfra.NewPostgresUserRepository(pool)
+	eventOwnershipChecker := authinfra.NewEventOwnershipAdapter(pool)
 	registerUC := authapp.NewRegisterUseCase(userRepo, passwordHasher)
 	loginUC := authapp.NewLoginUseCase(userRepo, passwordHasher, tokenProvider)
-	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo)
-	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, userRepo, redisClient)
+	assignGateOpUC := authapp.NewAssignGateOperatorUseCase(userRepo, eventOwnershipChecker)
+	listGateOpUC := authapp.NewListAssignedGateOperatorsUseCase(userRepo, eventOwnershipChecker)
+	removeGateOpUC := authapp.NewRemoveGateOperatorUseCase(userRepo, eventOwnershipChecker)
+	searchGateOpUC := authapp.NewSearchGateOperatorsUseCase(userRepo)
+	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, listGateOpUC, removeGateOpUC, searchGateOpUC, userRepo, redisClient)
 
 	// --- Admin module ---
 	adminRepo := admininfra.NewPostgresAdminRepository(pool)
