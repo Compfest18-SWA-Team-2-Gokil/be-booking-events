@@ -59,7 +59,7 @@ func (uc *AssignGateOperatorUseCase) Execute(ctx context.Context, input AssignGa
 	}
 
 	return &AssignedOperatorOutput{
-		Status: "assigned",
+		Status: "ACTIVE",
 		User: UserBrief{
 			ID:       user.ID,
 			Username: user.Username,

@@ -8,6 +8,7 @@ import (
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/application"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/checkin/domain"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 )
 
 type CheckinHandler struct {
@@ -41,6 +42,7 @@ func (h *CheckinHandler) IssueTicket(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "tiket tidak ditemukan atau belum CONFIRMED")
 			return
 		}
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -71,6 +73,7 @@ func (h *CheckinHandler) ScanTicket(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, domain.ErrGateOperatorNotAssigned):
 			writeError(w, http.StatusForbidden, err.Error())
 		default:
+			errorlog.SetError(r.Context(), err)
 			writeError(w, http.StatusInternalServerError, "internal error")
 		}
 		return
