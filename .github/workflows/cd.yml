@@ -30,7 +30,9 @@ jobs:
           username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
-          script: sudo systemctl stop ticketing-app
+          script: |
+            sudo systemctl stop ticketing-app
+            mkdir -p /tmp/ticketing-new/migrations
 
       - name: Copy binary ke server
         uses: appleboy/scp-action@v0.1.7
@@ -40,7 +42,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           source: "app,migrations"
-          target: /opt/ticketing-app/
+          target: /tmp/ticketing-new/
           strip_components: 0
           overwrite: true
 
@@ -53,8 +55,7 @@ jobs:
           port: 22
           script: |
             set -e
-            sudo chmod +x /opt/ticketing-app/app
-            sudo systemctl start ticketing-app
+            sudo /usr/local/bin/ticketing-deploy
             for i in $(seq 1 10); do
               curl -sf http://localhost:8080/docs > /dev/null && echo "=== Deploy OK ===" && exit 0
               sleep 2

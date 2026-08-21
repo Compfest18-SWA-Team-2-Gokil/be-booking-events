@@ -112,6 +112,26 @@ func (r *fakeUserRepo) RemoveGateOperator(_ context.Context, userID, eventID str
 	return nil
 }
 
+func (r *fakeUserRepo) UpdateUsername(_ context.Context, userID, newUsername string) error {
+	for _, u := range r.byEmail {
+		if u.ID == userID {
+			u.Username = newUsername
+			return nil
+		}
+	}
+	return domain.ErrUserNotFound
+}
+
+func (r *fakeUserRepo) UpdatePassword(_ context.Context, userID, newPasswordHash string) error {
+	for _, u := range r.byEmail {
+		if u.ID == userID {
+			u.PasswordHash = newPasswordHash
+			return nil
+		}
+	}
+	return domain.ErrUserNotFound
+}
+
 func (r *fakeUserRepo) SearchGateOperators(_ context.Context, query string) ([]domain.User, error) {
 	var users []domain.User
 	lowerQuery := strings.ToLower(query)
