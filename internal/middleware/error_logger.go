@@ -28,7 +28,7 @@ func (r *errorLoggingResponseRecorder) Write(b []byte) (int, error) {
 
 func ErrorLogger(logger *errorlog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		if !appconfig.IsDebug() {
+		if !appconfig.IsDebug() || logger == nil {
 			return next
 		}
 

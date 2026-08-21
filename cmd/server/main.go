@@ -148,10 +148,10 @@ func main() {
 	// --- Error File Logger (only active when APP_DEBUG=true) ---
 	errorFileLogger, err := errorlog.NewLogger()
 	if err != nil {
-		slog.Error("gagal inisialisasi error file logger", "err", err)
-		os.Exit(1)
+		slog.Warn("error file logger tidak aktif (menggunakan stdout slog)", "err", err)
+	} else if errorFileLogger != nil {
+		defer errorFileLogger.Close()
 	}
-	defer errorFileLogger.Close()
 
 	// --- Auth module ---
 	tokenProvider := authinfra.NewJWTTokenProvider(jwtSecret)
