@@ -70,3 +70,61 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://compfest_dev:compfest_dev@localhost:5433/compfest_test?sslmode=disable
         run: go test ./internal/inventory/infrastructure/... -count=1 -v -timeout 60s
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary (linux/amd64)
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w" -o app ./cmd/server
+
+      - name: Stop service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.SERVER_HOST || secrets.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            sudo systemctl stop ticketing-app
+            mkdir -p /tmp/ticketing-new/migrations
+
+      - name: Copy binary ke server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ vars.SERVER_HOST || secrets.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          source: "app,migrations"
+          target: /tmp/ticketing-new/
+          strip_components: 0
+          overwrite: true
+
+      - name: Start service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ vars.SERVER_HOST || secrets.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER || secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            sudo /usr/local/bin/ticketing-deploy
+            for i in $(seq 1 10); do
+              curl -sf http://localhost:8080/docs > /dev/null && echo "=== Deploy OK ===" && exit 0
+              sleep 2
+            done
+            echo "=== Health check GAGAL ===" && exit 1
