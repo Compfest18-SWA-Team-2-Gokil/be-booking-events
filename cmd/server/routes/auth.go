@@ -11,6 +11,9 @@ func registerAuth(r chi.Router, d Deps) {
 		r.Use(d.AuthMiddleware)
 
 		r.Get("/api/v1/auth/me", d.Auth.Me)
+		r.Put("/api/v1/auth/me/username", d.Auth.UpdateUsername)
+		r.Put("/api/v1/auth/me/password", d.Auth.ChangePassword)
+		r.Get("/api/v1/auth/username-check", d.Auth.CheckUsernameAvailability)
 
 		r.With(d.RequireOrganizer).Post("/api/v1/events/{eventID}/gate-operators", d.Auth.AssignGateOperator)
 		r.With(d.RequireOrganizer).Get("/api/v1/events/{eventID}/gate-operators", d.Auth.ListGateOperators)

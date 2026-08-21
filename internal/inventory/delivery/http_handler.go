@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/application"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/inventory/domain"
 )
@@ -23,7 +24,8 @@ type holdItemRequest struct {
 }
 
 type holdTicketRequest struct {
-	Items []holdItemRequest `json:"items"`
+	EventID string           `json:"event_id"` // wajib: digunakan oleh QueueGuard untuk identifikasi event
+	Items   []holdItemRequest `json:"items"`
 }
 
 type holdTicketResponse struct {
@@ -53,6 +55,7 @@ func (h *InventoryHandler) HoldTicket(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "tiket tidak tersedia")
 			return
 		}
+		errorlog.SetError(r.Context(), err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

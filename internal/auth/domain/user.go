@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var usernameRegex = regexp.MustCompile(`^[a-z0-9_]{3,30}$`)
+var UsernameRegex = regexp.MustCompile(`^[a-z0-9_]{3,30}$`)
 
 type Role string
 
@@ -37,7 +37,7 @@ func (u *User) Validate() error {
 	if u.Username == "" {
 		return ErrUsernameRequired
 	}
-	if !usernameRegex.MatchString(u.Username) {
+	if !UsernameRegex.MatchString(u.Username) {
 		return ErrInvalidUsername
 	}
 	if !strings.Contains(u.Email, "@") {

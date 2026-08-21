@@ -60,3 +60,9 @@ INSERT INTO ticket_types (id, event_id, name, price, kind, total_quota, price_st
     'LOCKED'
   )
 ON CONFLICT DO NOTHING;
+
+-- Generate ticket_units untuk semua tiket yang di-seed
+INSERT INTO ticket_units (ticket_type_id, status)
+SELECT id, 'AVAILABLE'
+FROM ticket_types, generate_series(1, total_quota)
+ON CONFLICT DO NOTHING;
