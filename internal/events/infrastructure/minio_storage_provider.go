@@ -13,7 +13,7 @@ import (
 type MinIOStorageProvider struct {
 	client    *minio.Client
 	bucket    string
-	publicURL string // base URL untuk generate link publik, e.g. http://localhost:9000
+	publicURL string // base URL untuk generate link publik, e.g. https://ticket.bagusbimawan.com
 }
 
 func NewMinIOStorageProvider(endpoint, accessKey, secretKey, bucket, publicURL string, useSSL bool) (*MinIOStorageProvider, error) {

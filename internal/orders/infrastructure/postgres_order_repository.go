@@ -190,30 +190,54 @@ func (r *PostgresOrderRepository) GetOrder(ctx context.Context, orderID string) 
 	if err != nil {
 		return nil, fmt.Errorf("get order: %w", err)
 	}
+
+	if o.Status == domain.OrderStatusPending && time.Since(o.CreatedAt) > 5*time.Minute {
+		_, _ = r.pool.Exec(ctx, `
+			UPDATE orders SET status = 'CANCELLED', updated_at = NOW() 
+			WHERE id = $1 AND status = 'PENDING'
+		`, o.ID)
+		o.Status = domain.OrderStatusCancelled
+	}
+
 	return o, nil
 }
 
-// ReleaseExpiredHeldOrders membatalkan order yang tidak lagi memiliki tiket berstatus HELD.
+// ReleaseExpiredHeldOrders membatalkan order yang tidak lagi memiliki tiket berstatus HELD atau sudah lewat 5 menit.
 // Digunakan sebelum query get orders agar status PENDING yang expired ter-update ke CANCELLED.
 func (r *PostgresOrderRepository) ReleaseExpiredHeldOrders(ctx context.Context, buyerID string) error {
+	// 1. Release ticket units yang status HELD dan held_until < NOW()
+	_, _ = r.pool.Exec(ctx, `
+		UPDATE ticket_units
+		SET status = 'AVAILABLE', held_until = NULL, order_id = NULL, updated_at = NOW()
+		WHERE status = 'HELD' AND held_until < NOW()
+	`)
+
+	// 2. Cancel orders berstatus PENDING yang sudah lewat 5 menit atau tidak punya tiket HELD aktif
 	_, err := r.pool.Exec(ctx, `
 		UPDATE orders
 		SET status = 'CANCELLED', updated_at = NOW()
 		WHERE buyer_id = $1
 		  AND status = 'PENDING'
-		  AND NOT EXISTS (
+		  AND (
+		      created_at < NOW() - INTERVAL '5 minutes'
+		      OR NOT EXISTS (
 		          SELECT 1 FROM ticket_units WHERE order_id = orders.id AND status = 'HELD'
+		      )
 		  )
 	`, buyerID)
 	return err
 }
 
 func (r *PostgresOrderRepository) GetOrdersByBuyer(ctx context.Context, buyerID string, limit, offset int) ([]*domain.Order, int, error) {
+	// Auto-cancel orders yang sudah kadaluarsa sebelum fetch
+	_ = r.ReleaseExpiredHeldOrders(ctx, buyerID)
+
 	var total int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM orders WHERE buyer_id = $1`, buyerID).Scan(&total)
 	if err != nil {
 		return nil, 0, fmt.Errorf("count orders by buyer: %w", err)
 	}
+
 
 	if limit <= 0 {
 		limit = 10
