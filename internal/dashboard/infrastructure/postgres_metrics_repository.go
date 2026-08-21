@@ -62,14 +62,20 @@ func (r *PostgresMetricsRepository) GetEventMetrics(ctx context.Context, eventID
 			m.Available = count
 		case "HELD":
 			m.Held = count
-		case "PAYMENT_PENDING", "CONFIRMED":
+		case "PAYMENT_PENDING", "CONFIRMED", "ADMITTED":
+			// Sold = semua tiket yang sudah pernah dibayar (termasuk yang sudah scan gate).
+			// ADMITTED adalah subset dari Sold — ditampilkan terpisah untuk info gate.
 			m.Sold += count
-		case "ADMITTED":
-			m.Admitted = count
+			if status == "ADMITTED" {
+				m.Admitted = count
+			}
 		case "REFUNDED":
 			m.Refunded = count
 		}
-		m.Total += count
+		// REFUNDED tidak masuk Total karena tiket dikembalikan ke AVAILABLE.
+		if status != "REFUNDED" {
+			m.Total += count
+		}
 	}
 
 	if err := rows.Err(); err != nil {

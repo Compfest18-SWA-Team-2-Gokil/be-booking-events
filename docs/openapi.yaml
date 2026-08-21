@@ -294,16 +294,22 @@ components:
           format: uuid
         available:
           type: integer
+          description: Jumlah tiket yang tersedia untuk dibeli. Tiket yang di-refund otomatis kembali ke status available.
         held:
           type: integer
+          description: Jumlah tiket yang sedang di-hold di keranjang / checkout (belum dibayar).
         sold:
           type: integer
+          description: Total tiket terjual dan aktif (CONFIRMED + PAYMENT_PENDING + ADMITTED). Tidak berkurang saat tiket di-scan di gate, dan otomatis berkurang jika tiket di-refund.
         admitted:
           type: integer
+          description: Jumlah tiket yang sudah berhasil di-scan di pintu masuk / gate (subset dari sold).
         refunded:
           type: integer
+          description: Jumlah tiket/order yang telah disetujui untuk di-refund.
         total:
           type: integer
+          description: Total kapasitas/kuota fisik tiket (available + held + sold).
 
 paths:
   # ── AUTH ─────────────────────────────────────────────────────────────────
@@ -954,8 +960,14 @@ paths:
       tags: [Dashboard]
       summary: Metrics tiket per event
       description: |
-        Menampilkan jumlah tiket per status (AVAILABLE, HELD, CONFIRMED, ADMITTED, REFUNDED)
-        per tipe tiket. Hanya ORGANIZER.
+        Menampilkan metrik agregasi langsung dari unit tiket per tipe tiket:
+        - `available`: Tiket yang siap dibeli (termasuk kuota yang kembali dari tiket refunded)
+        - `held`: Tiket dalam proses checkout (hold 5 menit)
+        - `sold`: Total tiket valid/terjual (CONFIRMED + ADMITTED)
+        - `admitted`: Tiket yang sudah scan gate (hadir di venue)
+        - `refunded`: Tiket/order yang telah direfund
+        - `total`: Total kuota fisik tiket
+        Hanya bisa diakses oleh ORGANIZER dan ADMIN.
       security:
         - BearerAuth: []
       parameters:

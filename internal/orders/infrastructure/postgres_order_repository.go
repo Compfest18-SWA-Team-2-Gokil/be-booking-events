@@ -377,9 +377,13 @@ func (r *PostgresOrderRepository) UpdateOrderStatus(ctx context.Context, orderID
 			WHERE order_id = $1 AND status = 'HELD'
 		`, orderID)
 	case domain.OrderStatusRefunded:
+		// Kembalikan tiket ke AVAILABLE agar stok event naik kembali.
+		// Status order tetap REFUNDED sebagai audit trail.
+		// Tiket yang sudah ADMITTED tidak bisa dikembalikan ke stok (sudah masuk venue).
 		_, err = tx.Exec(ctx, `
-			UPDATE ticket_units SET status = 'REFUNDED'
-			WHERE order_id = $1
+			UPDATE ticket_units
+			SET status = 'AVAILABLE', order_id = NULL, updated_at = NOW()
+			WHERE order_id = $1 AND status IN ('HELD', 'CONFIRMED', 'PAYMENT_PENDING')
 		`, orderID)
 	case domain.OrderStatusCancelled:
 		_, err = tx.Exec(ctx, `

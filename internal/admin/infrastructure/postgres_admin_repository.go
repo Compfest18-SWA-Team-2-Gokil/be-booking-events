@@ -77,7 +77,11 @@ func (r *PostgresAdminRepository) OverrideOrderStatus(ctx context.Context, order
 	}
 
 	if newStatus == "REFUNDED" {
-		_, _ = tx.Exec(ctx, `UPDATE ticket_units SET status = 'REFUNDED', updated_at = NOW() WHERE order_id = $1`, orderID)
+		_, _ = tx.Exec(ctx, `
+			UPDATE ticket_units
+			SET status = 'AVAILABLE', order_id = NULL, updated_at = NOW()
+			WHERE order_id = $1 AND status IN ('HELD', 'CONFIRMED', 'PAYMENT_PENDING')
+		`, orderID)
 	}
 
 	// Audit log wajib — override admin harus traceable.
