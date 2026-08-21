@@ -192,6 +192,50 @@ func (r *PostgresUserRepository) SearchGateOperators(ctx context.Context, query 
 	return users, nil
 }
 
+func (r *PostgresUserRepository) ListMyAssignedEvents(ctx context.Context, userID string) ([]application.AssignedEvent, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT 
+			e.id::text,
+			e.name,
+			COALESCE(e.description, ''),
+			COALESCE(e.category, ''),
+			e.date,
+			e.location,
+			COALESCE(e.image_url, ''),
+			goa.assigned_at,
+			goa.status
+		FROM gate_operator_assignments goa
+		JOIN events e ON e.id = goa.event_id
+		WHERE goa.user_id = $1 AND goa.status = 'ACTIVE'
+		ORDER BY e.date ASC
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list my assigned events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []application.AssignedEvent
+	for rows.Next() {
+		var ev application.AssignedEvent
+		if err := rows.Scan(
+			&ev.EventID,
+			&ev.Name,
+			&ev.Description,
+			&ev.Category,
+			&ev.Date,
+			&ev.Location,
+			&ev.ImageURL,
+			&ev.AssignedAt,
+			&ev.Status,
+		); err != nil {
+			return nil, fmt.Errorf("scan assigned event: %w", err)
+		}
+		events = append(events, ev)
+	}
+	return events, nil
+}
+
+
 type EventOwnershipAdapter struct {
 	pool *pgxpool.Pool
 }

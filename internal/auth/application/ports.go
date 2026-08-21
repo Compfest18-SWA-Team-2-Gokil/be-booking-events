@@ -18,6 +18,7 @@ type UserRepository interface {
 	ListAssignedGateOperators(ctx context.Context, eventID string) ([]AssignedOperator, error)
 	RemoveGateOperator(ctx context.Context, userID, eventID string) error
 	SearchGateOperators(ctx context.Context, query string) ([]domain.User, error)
+	ListMyAssignedEvents(ctx context.Context, userID string) ([]AssignedEvent, error)
 }
 
 type AssignedOperator struct {
@@ -28,6 +29,18 @@ type AssignedOperator struct {
 	AssignedAt time.Time `json:"assigned_at"`
 	AssignedBy string    `json:"assigned_by"`
 	Status     string    `json:"status"`
+}
+
+type AssignedEvent struct {
+	EventID     string    `json:"event_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Category    string    `json:"category"`
+	Date        time.Time `json:"date"`
+	Location    string    `json:"location"`
+	ImageURL    string    `json:"image_url,omitempty"`
+	AssignedAt  time.Time `json:"assigned_at"`
+	Status      string    `json:"status"`
 }
 
 type EventOwnershipChecker interface {

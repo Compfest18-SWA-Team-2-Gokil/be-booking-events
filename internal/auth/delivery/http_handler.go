@@ -17,17 +17,18 @@ import (
 )
 
 type AuthHandler struct {
-	registerUC       *application.RegisterUseCase
-	loginUC          *application.LoginUseCase
-	assignGateOpUC   *application.AssignGateOperatorUseCase
-	listGateOpUC     *application.ListAssignedGateOperatorsUseCase
-	removeGateOpUC   *application.RemoveGateOperatorUseCase
-	searchGateOpUC   *application.SearchGateOperatorsUseCase
-	updateUsernameUC *application.UpdateUsernameUseCase
-	changePasswordUC *application.ChangePasswordUseCase
-	checkUsernameUC  *application.CheckUsernameAvailabilityUseCase
-	userRepo         application.UserRepository
-	redis            *redis.Client
+	registerUC             *application.RegisterUseCase
+	loginUC                *application.LoginUseCase
+	assignGateOpUC         *application.AssignGateOperatorUseCase
+	listGateOpUC           *application.ListAssignedGateOperatorsUseCase
+	removeGateOpUC         *application.RemoveGateOperatorUseCase
+	searchGateOpUC         *application.SearchGateOperatorsUseCase
+	listMyAssignedEventsUC *application.ListMyAssignedEventsUseCase
+	updateUsernameUC       *application.UpdateUsernameUseCase
+	changePasswordUC       *application.ChangePasswordUseCase
+	checkUsernameUC        *application.CheckUsernameAvailabilityUseCase
+	userRepo               application.UserRepository
+	redis                  *redis.Client
 }
 
 func NewAuthHandler(
@@ -37,6 +38,7 @@ func NewAuthHandler(
 	listGateOpUC *application.ListAssignedGateOperatorsUseCase,
 	removeGateOpUC *application.RemoveGateOperatorUseCase,
 	searchGateOpUC *application.SearchGateOperatorsUseCase,
+	listMyAssignedEventsUC *application.ListMyAssignedEventsUseCase,
 	updateUsernameUC *application.UpdateUsernameUseCase,
 	changePasswordUC *application.ChangePasswordUseCase,
 	checkUsernameUC *application.CheckUsernameAvailabilityUseCase,
@@ -44,17 +46,18 @@ func NewAuthHandler(
 	redisClient *redis.Client,
 ) *AuthHandler {
 	return &AuthHandler{
-		registerUC:       registerUC,
-		loginUC:          loginUC,
-		assignGateOpUC:   assignGateOpUC,
-		listGateOpUC:     listGateOpUC,
-		removeGateOpUC:   removeGateOpUC,
-		searchGateOpUC:   searchGateOpUC,
-		updateUsernameUC: updateUsernameUC,
-		changePasswordUC: changePasswordUC,
-		checkUsernameUC:  checkUsernameUC,
-		userRepo:         userRepo,
-		redis:            redisClient,
+		registerUC:             registerUC,
+		loginUC:                loginUC,
+		assignGateOpUC:         assignGateOpUC,
+		listGateOpUC:           listGateOpUC,
+		removeGateOpUC:         removeGateOpUC,
+		searchGateOpUC:         searchGateOpUC,
+		listMyAssignedEventsUC: listMyAssignedEventsUC,
+		updateUsernameUC:       updateUsernameUC,
+		changePasswordUC:       changePasswordUC,
+		checkUsernameUC:        checkUsernameUC,
+		userRepo:               userRepo,
+		redis:                  redisClient,
 	}
 }
 
@@ -301,6 +304,18 @@ func (h *AuthHandler) SearchGateOperators(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (h *AuthHandler) ListMyAssignedEvents(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromCtx(r.Context())
+
+	events, err := h.listMyAssignedEventsUC.Execute(r.Context(), userID)
+	if err != nil {
+		writeInternalError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, events)
 }
 
 func (h *AuthHandler) UpdateUsername(w http.ResponseWriter, r *http.Request) {

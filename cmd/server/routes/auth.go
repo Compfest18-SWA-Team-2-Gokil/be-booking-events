@@ -19,5 +19,7 @@ func registerAuth(r chi.Router, d Deps) {
 		r.With(d.RequireOrganizer).Get("/api/v1/events/{eventID}/gate-operators", d.Auth.ListGateOperators)
 		r.With(d.RequireOrganizer).Delete("/api/v1/events/{eventID}/gate-operators/{userID}", d.Auth.RemoveGateOperator)
 		r.With(d.RequireOrganizer).Get("/api/v1/users", d.Auth.SearchGateOperators)
+
+		r.With(d.RequireGateOperator).Get("/api/v1/gate-operator/my-events", d.Auth.ListMyAssignedEvents)
 	})
 }

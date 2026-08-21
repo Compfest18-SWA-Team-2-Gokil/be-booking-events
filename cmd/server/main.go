@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/cmd/server/routes"
 	adminapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/application"
 	admindelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/delivery"
 	admininfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/admin/infrastructure"
 	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/audit"
-	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	authapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/application"
 	authdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/delivery"
 	authinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/auth/infrastructure"
@@ -24,6 +24,7 @@ import (
 	dashboardapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/application"
 	dashboarddelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/delivery"
 	dashboardinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/dashboard/infrastructure"
+	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/errorlog"
 	eventsapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/application"
 	eventsdelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/delivery"
 	eventsinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/events/infrastructure"
@@ -41,7 +42,6 @@ import (
 	queueapp "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/application"
 	queuedelivery "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/delivery"
 	queueinfra "github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/internal/queue/infrastructure"
-	"github.com/Compfest18-SWA-Team-2-Gokil/be-booking-events/cmd/server/routes"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -88,10 +88,10 @@ func main() {
 		os.Exit(1)
 	}
 	poolCfg.MaxConns = maxConns
-	poolCfg.MinConns = 2                                    // selalu ada 2 koneksi siap
-	poolCfg.MaxConnLifetime = 30 * time.Minute              // rotasi koneksi tiap 30 menit
-	poolCfg.MaxConnIdleTime = 5 * time.Minute               // tutup koneksi idle > 5 menit
-	poolCfg.HealthCheckPeriod = 1 * time.Minute             // ping koneksi idle tiap 1 menit
+	poolCfg.MinConns = 2                        // selalu ada 2 koneksi siap
+	poolCfg.MaxConnLifetime = 30 * time.Minute  // rotasi koneksi tiap 30 menit
+	poolCfg.MaxConnIdleTime = 5 * time.Minute   // tutup koneksi idle > 5 menit
+	poolCfg.HealthCheckPeriod = 1 * time.Minute // ping koneksi idle tiap 1 menit
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
@@ -164,10 +164,11 @@ func main() {
 	listGateOpUC := authapp.NewListAssignedGateOperatorsUseCase(userRepo, eventOwnershipChecker)
 	removeGateOpUC := authapp.NewRemoveGateOperatorUseCase(userRepo, eventOwnershipChecker)
 	searchGateOpUC := authapp.NewSearchGateOperatorsUseCase(userRepo)
+	listMyAssignedEventsUC := authapp.NewListMyAssignedEventsUseCase(userRepo)
 	updateUsernameUC := authapp.NewUpdateUsernameUseCase(userRepo)
 	changePasswordUC := authapp.NewChangePasswordUseCase(userRepo, passwordHasher)
 	checkUsernameUC := authapp.NewCheckUsernameAvailabilityUseCase(userRepo)
-	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, listGateOpUC, removeGateOpUC, searchGateOpUC, updateUsernameUC, changePasswordUC, checkUsernameUC, userRepo, redisClient)
+	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, listGateOpUC, removeGateOpUC, searchGateOpUC, listMyAssignedEventsUC, updateUsernameUC, changePasswordUC, checkUsernameUC, userRepo, redisClient)
 
 	// --- Admin module ---
 	adminRepo := admininfra.NewPostgresAdminRepository(pool)

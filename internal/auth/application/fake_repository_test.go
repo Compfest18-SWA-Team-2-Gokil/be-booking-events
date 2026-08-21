@@ -66,6 +66,26 @@ func (r *fakeUserRepo) FindByUsername(_ context.Context, username string) (*doma
 	return u, nil
 }
 
+func (r *fakeUserRepo) UpdateUsername(_ context.Context, userID, newUsername string) error {
+	u, ok := r.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	delete(r.byUsername, u.Username)
+	u.Username = newUsername
+	r.byUsername[newUsername] = u
+	return nil
+}
+
+func (r *fakeUserRepo) UpdatePassword(_ context.Context, userID, newPasswordHash string) error {
+	u, ok := r.byID[userID]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.PasswordHash = newPasswordHash
+	return nil
+}
+
 func (r *fakeUserRepo) AssignGateOperator(_ context.Context, userID, eventID, assignedBy string) error {
 	key := userID + ":" + eventID
 	if existing, ok := r.assignments[key]; ok && existing.status == "ACTIVE" {
@@ -144,6 +164,25 @@ func (r *fakeUserRepo) SearchGateOperators(_ context.Context, query string) ([]d
 		}
 	}
 	return users, nil
+}
+
+func (r *fakeUserRepo) ListMyAssignedEvents(_ context.Context, userID string) ([]application.AssignedEvent, error) {
+	var events []application.AssignedEvent
+	for _, a := range r.assignments {
+		if a.userID == userID && a.status == "ACTIVE" {
+			events = append(events, application.AssignedEvent{
+				EventID:     a.eventID,
+				Name:        "Event " + a.eventID,
+				Description: "Description for " + a.eventID,
+				Category:    "music",
+				Date:        time.Now().Add(24 * time.Hour),
+				Location:    "Main Stadium",
+				AssignedAt:  a.assignedAt,
+				Status:      a.status,
+			})
+		}
+	}
+	return events, nil
 }
 
 type fakeEventOwnershipChecker struct {

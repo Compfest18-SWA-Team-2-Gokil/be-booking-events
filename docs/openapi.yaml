@@ -731,6 +731,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/gate-operator/my-events:
+    get:
+      tags: [Auth]
+      summary: Daftar event yang ditugaskan ke Gate Operator login
+      description: Hanya GATE_OPERATOR. Mengambil daftar event aktif tempat gate operator ditugaskan.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Daftar event yang ditugaskan
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    event_id:
+                      type: string
+                      format: uuid
+                    name:
+                      type: string
+                    description:
+                      type: string
+                    category:
+                      type: string
+                    date:
+                      type: string
+                      format: date-time
+                    location:
+                      type: string
+                    image_url:
+                      type: string
+                    assigned_at:
+                      type: string
+                      format: date-time
+                    status:
+                      type: string
+                      example: "ACTIVE"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - bukan GATE_OPERATOR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   # ── EVENTS ───────────────────────────────────────────────────────────────
   /api/v1/events:
     post:
