@@ -73,8 +73,8 @@ func TestAssignGateOperatorUseCase_Execute_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.Status != "assigned" {
-		t.Errorf("status = %s, want assigned", result.Status)
+	if result.Status != "ACTIVE" {
+		t.Errorf("status = %s, want ACTIVE", result.Status)
 	}
 	if result.User.Username != "gate_op1" {
 		t.Errorf("username = %s, want gate_op1", result.User.Username)
