@@ -324,20 +324,31 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email, name, password]
+              required: [email, username, name, password]
               properties:
                 email:
                   type: string
                   format: email
+                username:
+                  type: string
+                  example: "budisantoso"
                 name:
                   type: string
+                  example: "Budi Santoso"
                 password:
                   type: string
                   minLength: 8
+                  example: "password123"
+                role:
+                  type: string
+                  enum: [BUYER, ORGANIZER, GATE_OPERATOR]
+                  example: "BUYER"
             example:
               email: "buyer@example.com"
+              username: "budisantoso"
               name: "Budi Santoso"
               password: "password123"
+              role: "BUYER"
       responses:
         "201":
           description: Berhasil register
@@ -416,9 +427,9 @@ paths:
       tags: [Auth]
       summary: Logout — invalidasi JWT token
       description: |
-        Menambahkan token ke Redis blocklist dengan TTL 25 jam.
+        Menambahkan token ke Redis blocklist dengan TTL 25 jam dan menghapus cookie auth_token.
         Setelah logout, token yang sama akan ditolak 401 oleh AuthMiddleware.
-        Requires JWT (Bearer token) di header.
+        Requires JWT (Bearer token) di header atau cookie.
       security:
         - BearerAuth: []
       responses:
@@ -445,11 +456,171 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/auth/me/username:
+    put:
+      tags: [Auth]
+      summary: Update username pengguna
+      description: Memperbarui username pengguna yang sedang login. Username harus 3-30 karakter alphanumeric/underscore dan belum dipakai user lain.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username:
+                  type: string
+                  example: "newusername123"
+      responses:
+        "200":
+          description: Username berhasil diperbarui
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Format username tidak valid atau username sama dengan sebelumnya
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Username sudah digunakan oleh pengguna lain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/me/password:
+    put:
+      tags: [Auth]
+      summary: Ubah password pengguna
+      description: Mengubah password akun user yang sedang login dengan memvalidasi password lama dan password baru (minimal 8 karakter).
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password:
+                  type: string
+                  example: "passwordLama123"
+                new_password:
+                  type: string
+                  minLength: 8
+                  example: "passwordBaru456"
+      responses:
+        "200":
+          description: Password berhasil diubah
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: password_changed
+        "400":
+          description: Password lama salah atau password baru kurang dari 8 karakter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/username-check:
+    get:
+      tags: [Auth]
+      summary: Cek ketersediaan username
+      description: Memeriksa apakah suatu username masih tersedia (belum digunakan) saat registrasi atau ganti username.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: username
+          in: query
+          required: true
+          description: Username yang ingin dicek ketersediaannya
+          schema:
+            type: string
+            example: "budi123"
+      responses:
+        "200":
+          description: Hasil pemeriksaan username
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  username:
+                    type: string
+                    example: "budi123"
+                  available:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Username tersedia"
+        "400":
+          description: Parameter username tidak diisi atau tidak valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/users:
+    get:
+      tags: [Auth]
+      summary: Cari Gate Operator
+      description: Hanya ORGANIZER. Mencari pengguna dengan role GATE_OPERATOR berdasarkan query keyword (email / username / nama) untuk di-assign ke event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Keyword pencarian (email, username, atau nama)
+          schema:
+            type: string
+            example: "gate"
+      responses:
+        "200":
+          description: Daftar pengguna GATE_OPERATOR yang cocok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "403":
+          description: Bukan ORGANIZER
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/events/{eventID}/gate-operators:
     post:
       tags: [Auth]
       summary: Assign gate operator ke event
-      description: Hanya ORGANIZER. User yang di-assign harus punya role GATE_OPERATOR.
+      description: Hanya ORGANIZER pemilik event. Menugaskan Gate Operator ke event berdasarkan username akun Gate Operator.
       security:
         - BearerAuth: []
       parameters:
@@ -460,11 +631,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [user_id]
+              required: [username]
               properties:
-                user_id:
+                username:
                   type: string
-                  format: uuid
+                  description: Username akun Gate Operator
+                  example: "gateoperator1"
       responses:
         "200":
           description: Berhasil di-assign
@@ -477,13 +649,83 @@ paths:
                     type: string
                     example: assigned
         "400":
-          description: User bukan GATE_OPERATOR
+          description: User bukan ber-role GATE_OPERATOR atau sudah di-assign
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Bukan ORGANIZER
+          description: Bukan ORGANIZER pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: User tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    get:
+      tags: [Auth]
+      summary: Daftar gate operator yang di-assign ke event
+      description: Hanya ORGANIZER pemilik event. Mengambil daftar Gate Operator yang aktif bertugas untuk event ini.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+      responses:
+        "200":
+          description: Daftar Gate Operator
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "403":
+          description: Bukan ORGANIZER pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/events/{eventID}/gate-operators/{userID}:
+    delete:
+      tags: [Auth]
+      summary: Hapus/cabut penugasan gate operator dari event
+      description: Hanya ORGANIZER pemilik event. Mencabut penugasan Gate Operator tertentu dari event.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/eventID"
+        - name: userID
+          in: path
+          required: true
+          description: UUID user gate operator
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Penugasan berhasil dicabut
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: revoked
+        "403":
+          description: Bukan ORGANIZER pemilik event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Penugasan tidak ditemukan
           content:
             application/json:
               schema:
