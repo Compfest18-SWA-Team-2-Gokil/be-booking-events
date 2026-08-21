@@ -164,7 +164,10 @@ func main() {
 	listGateOpUC := authapp.NewListAssignedGateOperatorsUseCase(userRepo, eventOwnershipChecker)
 	removeGateOpUC := authapp.NewRemoveGateOperatorUseCase(userRepo, eventOwnershipChecker)
 	searchGateOpUC := authapp.NewSearchGateOperatorsUseCase(userRepo)
-	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, listGateOpUC, removeGateOpUC, searchGateOpUC, userRepo, redisClient)
+	updateUsernameUC := authapp.NewUpdateUsernameUseCase(userRepo)
+	changePasswordUC := authapp.NewChangePasswordUseCase(userRepo, passwordHasher)
+	checkUsernameUC := authapp.NewCheckUsernameAvailabilityUseCase(userRepo)
+	authHandler := authdelivery.NewAuthHandler(registerUC, loginUC, assignGateOpUC, listGateOpUC, removeGateOpUC, searchGateOpUC, updateUsernameUC, changePasswordUC, checkUsernameUC, userRepo, redisClient)
 
 	// --- Admin module ---
 	adminRepo := admininfra.NewPostgresAdminRepository(pool)

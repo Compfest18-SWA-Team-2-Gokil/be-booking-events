@@ -18,4 +18,7 @@ var (
 	ErrUsernameAlreadyTaken = errors.New("username sudah digunakan")
 	ErrNotEventOrganizer  = errors.New("bukan organizer dari event ini")
 	ErrAlreadyAssigned    = errors.New("gate operator sudah di-assign ke event ini")
+	ErrWrongPassword      = errors.New("password lama tidak sesuai")
+	ErrNewPasswordTooShort = errors.New("password baru minimal 8 karakter")
+	ErrSameUsername       = errors.New("username baru sama dengan username lama")
 )

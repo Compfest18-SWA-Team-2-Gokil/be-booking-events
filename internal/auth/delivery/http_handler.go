@@ -17,14 +17,17 @@ import (
 )
 
 type AuthHandler struct {
-	registerUC     *application.RegisterUseCase
-	loginUC        *application.LoginUseCase
-	assignGateOpUC *application.AssignGateOperatorUseCase
-	listGateOpUC   *application.ListAssignedGateOperatorsUseCase
-	removeGateOpUC *application.RemoveGateOperatorUseCase
-	searchGateOpUC *application.SearchGateOperatorsUseCase
-	userRepo       application.UserRepository
-	redis          *redis.Client
+	registerUC       *application.RegisterUseCase
+	loginUC          *application.LoginUseCase
+	assignGateOpUC   *application.AssignGateOperatorUseCase
+	listGateOpUC     *application.ListAssignedGateOperatorsUseCase
+	removeGateOpUC   *application.RemoveGateOperatorUseCase
+	searchGateOpUC   *application.SearchGateOperatorsUseCase
+	updateUsernameUC *application.UpdateUsernameUseCase
+	changePasswordUC *application.ChangePasswordUseCase
+	checkUsernameUC  *application.CheckUsernameAvailabilityUseCase
+	userRepo         application.UserRepository
+	redis            *redis.Client
 }
 
 func NewAuthHandler(
@@ -34,18 +37,24 @@ func NewAuthHandler(
 	listGateOpUC *application.ListAssignedGateOperatorsUseCase,
 	removeGateOpUC *application.RemoveGateOperatorUseCase,
 	searchGateOpUC *application.SearchGateOperatorsUseCase,
+	updateUsernameUC *application.UpdateUsernameUseCase,
+	changePasswordUC *application.ChangePasswordUseCase,
+	checkUsernameUC *application.CheckUsernameAvailabilityUseCase,
 	userRepo application.UserRepository,
 	redisClient *redis.Client,
 ) *AuthHandler {
 	return &AuthHandler{
-		registerUC:     registerUC,
-		loginUC:        loginUC,
-		assignGateOpUC: assignGateOpUC,
-		listGateOpUC:   listGateOpUC,
-		removeGateOpUC: removeGateOpUC,
-		searchGateOpUC: searchGateOpUC,
-		userRepo:       userRepo,
-		redis:          redisClient,
+		registerUC:       registerUC,
+		loginUC:          loginUC,
+		assignGateOpUC:   assignGateOpUC,
+		listGateOpUC:     listGateOpUC,
+		removeGateOpUC:   removeGateOpUC,
+		searchGateOpUC:   searchGateOpUC,
+		updateUsernameUC: updateUsernameUC,
+		changePasswordUC: changePasswordUC,
+		checkUsernameUC:  checkUsernameUC,
+		userRepo:         userRepo,
+		redis:            redisClient,
 	}
 }
 
@@ -72,6 +81,15 @@ type userResponse struct {
 
 type assignGateOpRequest struct {
 	Username string `json:"username"`
+}
+
+type updateUsernameRequest struct {
+	Username string `json:"username"`
+}
+
+type changePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -283,6 +301,88 @@ func (h *AuthHandler) SearchGateOperators(w http.ResponseWriter, r *http.Request
 	}
 
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (h *AuthHandler) UpdateUsername(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromCtx(r.Context())
+
+	var req updateUsernameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body tidak valid")
+		return
+	}
+
+	if req.Username == "" {
+		writeError(w, http.StatusBadRequest, "username wajib diisi")
+		return
+	}
+
+	user, err := h.updateUsernameUC.Execute(r.Context(), userID, req.Username)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrInvalidUsername):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, domain.ErrSameUsername):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, domain.ErrUsernameAlreadyTaken):
+			writeError(w, http.StatusConflict, err.Error())
+		default:
+			writeInternalError(w, r, err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, userResponse{
+		ID: user.ID, Email: user.Email, Username: user.Username, Name: user.Name, Role: string(user.Role),
+	})
+}
+
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromCtx(r.Context())
+
+	var req changePasswordRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "request body tidak valid")
+		return
+	}
+
+	if req.OldPassword == "" || req.NewPassword == "" {
+		writeError(w, http.StatusBadRequest, "password lama dan baru wajib diisi")
+		return
+	}
+
+	err := h.changePasswordUC.Execute(r.Context(), userID, req.OldPassword, req.NewPassword)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrWrongPassword):
+			writeError(w, http.StatusBadRequest, err.Error())
+		case errors.Is(err, domain.ErrNewPasswordTooShort):
+			writeError(w, http.StatusBadRequest, err.Error())
+		default:
+			writeInternalError(w, r, err)
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "password_changed"})
+}
+
+func (h *AuthHandler) CheckUsernameAvailability(w http.ResponseWriter, r *http.Request) {
+	userID := UserIDFromCtx(r.Context())
+	username := r.URL.Query().Get("username")
+
+	if username == "" {
+		writeError(w, http.StatusBadRequest, "parameter username wajib diisi")
+		return
+	}
+
+	result, err := h.checkUsernameUC.Execute(r.Context(), username, userID)
+	if err != nil {
+		writeInternalError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

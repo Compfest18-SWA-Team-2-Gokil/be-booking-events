@@ -12,6 +12,8 @@ type UserRepository interface {
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	FindByID(ctx context.Context, id string) (*domain.User, error)
 	FindByUsername(ctx context.Context, username string) (*domain.User, error)
+	UpdateUsername(ctx context.Context, userID, newUsername string) error
+	UpdatePassword(ctx context.Context, userID, newPasswordHash string) error
 	AssignGateOperator(ctx context.Context, userID, eventID, assignedBy string) error
 	ListAssignedGateOperators(ctx context.Context, eventID string) ([]AssignedOperator, error)
 	RemoveGateOperator(ctx context.Context, userID, eventID string) error
@@ -19,13 +21,13 @@ type UserRepository interface {
 }
 
 type AssignedOperator struct {
-	UserID     string
-	Username   string
-	Name       string
-	Email      string
-	AssignedAt time.Time
-	AssignedBy string
-	Status     string
+	UserID     string    `json:"user_id"`
+	Username   string    `json:"username"`
+	Name       string    `json:"name"`
+	Email      string    `json:"email"`
+	AssignedAt time.Time `json:"assigned_at"`
+	AssignedBy string    `json:"assigned_by"`
+	Status     string    `json:"status"`
 }
 
 type EventOwnershipChecker interface {

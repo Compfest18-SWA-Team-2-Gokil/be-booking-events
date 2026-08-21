@@ -90,6 +90,26 @@ func (r *PostgresUserRepository) FindByUsername(ctx context.Context, username st
 	return &u, nil
 }
 
+func (r *PostgresUserRepository) UpdateUsername(ctx context.Context, userID, newUsername string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE users SET username = $2, updated_at = NOW() WHERE id = $1
+	`, userID, newUsername)
+	if err != nil {
+		return fmt.Errorf("update username: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresUserRepository) UpdatePassword(ctx context.Context, userID, newPasswordHash string) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1
+	`, userID, newPasswordHash)
+	if err != nil {
+		return fmt.Errorf("update password: %w", err)
+	}
+	return nil
+}
+
 func (r *PostgresUserRepository) AssignGateOperator(ctx context.Context, userID, eventID, assignedBy string) error {
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO gate_operator_assignments (user_id, event_id, assigned_by, status)
